@@ -1,0 +1,14 @@
+  _                    _             _
+ | |    ___  _ __   __| | __ _  ___| |_
+ | |   / _ \| '_ \ / _` |/ _` |/ __| __|
+ | |__| (_) | | | | (_| | (_| | (__| |_
+ |_____\___/|_| |_|\__,_|\__,_|\___|\__|
+
+ OpenNebula KVM node — common tools available:
+   ip a | ss -tulpn | ping | dig | traceroute | mtr
+   tcpdump | lsof | htop | nano | tree | jq | git
+   virsh -r -c qemu:///system list --all
+
+ Host is managed by the front-end via SSH (oneadmin).
+ VMs run here with KVM (/dev/kvm).
+

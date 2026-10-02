@@ -18,6 +18,30 @@ RUN apt-get update \
         openssh-client \
         rsync \
         tini \
+        iproute2 \
+        iputils-ping \
+        iputils-tracepath \
+        net-tools \
+        netcat-openbsd \
+        dnsutils \
+        traceroute \
+        mtr-tiny \
+        tcpdump \
+        lsof \
+        psmisc \
+        jq \
+        less \
+        nano \
+        tree \
+        htop \
+        file \
+        unzip \
+        zip \
+        git \
+        sudo \
+        gawk \
+        bc \
+        bash-completion \
     && mkdir -p /etc/apt/keyrings \
     && wget -q -O- https://downloads.opennebula.io/repo/repo2.key \
         | gpg --dearmor --yes --output /etc/apt/keyrings/opennebula.gpg \
@@ -37,7 +61,12 @@ RUN apt-get update \
 
 COPY entrypoint.sh /entrypoint.sh
 COPY seed.sh /seed.sh
-RUN chmod +x /entrypoint.sh /seed.sh
+COPY motd /etc/motd
+RUN chmod +x /entrypoint.sh /seed.sh \
+    && echo '[ -r /etc/bash_completion ] && . /etc/bash_completion' >> /etc/bash.bashrc \
+    && echo 'alias ll="ls -alF"' >> /root/.bashrc \
+    && echo 'alias ll="ls -alF"' >> /home/oneadmin/.bashrc 2>/dev/null || true \
+    && chown oneadmin:oneadmin /home/oneadmin/.bashrc 2>/dev/null || true
 
 EXPOSE 2633 2616
 

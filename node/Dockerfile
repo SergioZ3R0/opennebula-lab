@@ -16,8 +16,29 @@ RUN apt-get update \
         curl \
         procps \
         openssh-server \
+        openssh-client \
         tini \
         iproute2 \
+        iputils-ping \
+        iputils-tracepath \
+        net-tools \
+        netcat-openbsd \
+        dnsutils \
+        traceroute \
+        mtr-tiny \
+        tcpdump \
+        lsof \
+        psmisc \
+        jq \
+        less \
+        nano \
+        tree \
+        htop \
+        file \
+        unzip \
+        zip \
+        git \
+        bash-completion \
         iptables \
         sudo \
         ruby \
@@ -41,7 +62,12 @@ RUN apt-get update \
     && mkdir -p /run/sshd
 
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+COPY motd /etc/motd
+RUN chmod +x /entrypoint.sh \
+    && echo '[ -r /etc/bash_completion ] && . /etc/bash_completion' >> /etc/bash.bashrc \
+    && echo 'alias ll="ls -alF"' >> /root/.bashrc \
+    && echo 'alias ll="ls -alF"' >> /home/oneadmin/.bashrc 2>/dev/null || true \
+    && chown oneadmin:oneadmin /home/oneadmin/.bashrc 2>/dev/null || true
 
 # libvirt/qemu debug-friendly logging to stdout
 ENV LIBVIRT_LOG_FILTERS="1:libvirt 1:qemu" \

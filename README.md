@@ -18,6 +18,19 @@ Built to fill a real gap: OpenNebula does not publish official container images 
 - Optional dummy/NAT virtual network seed
 - Optional tiny Alpine cloud image seed
 - Optional second node via compose profile `multi`
+- Basic sysadmin tools preinstalled on both containers
+
+### Included tools
+
+```
+ip a | ss -tulpn | ifconfig | ping | dig | nslookup
+traceroute | mtr | tcpdump | netcat | lsof | htop
+nano | tree | jq | git | rsync | unzip | file
+psmisc | bash-completion | sudo
+```
+
+OpenNebula CLI on the front-end: `onevm`, `onehost`, `onevnet`, `oneimage`, `onedatastore`, `oneuser`, `oneacl`...
+Node also has `virsh` for KVM/libvirt inspection.
 
 ## Requirements
 
