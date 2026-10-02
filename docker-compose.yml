@@ -61,6 +61,10 @@ services:
     environment:
       SETUP_NAT: ${SETUP_NAT:-false}
       ONE_VERSION: ${ONE_VERSION:-7.4}
+    # VM VNC consoles live on the node (5900 + display). Publish the range
+    # so you can open a VM console from the host with any VNC client.
+    ports:
+      - "${VNC_PORT_RANGE:-5900-5907}:5900-5907"
     restart: unless-stopped
 
   # optional second node: docker compose --profile multi up

@@ -125,6 +125,31 @@ docker exec -it one-lab-frontend bash -lc 'su - oneadmin -c "onevm list"'
 open http://localhost:2616   # oneadmin / opennebula
 ```
 
+### Access a VM console (VNC)
+
+VMs get a VNC display on the **node** (`5900 + display`). Compose publishes `5900-5907`.
+
+```bash
+# which port does your VM use?
+docker exec one-lab-frontend bash -lc 'su - oneadmin -c "onevm show alpine-lab-01"' | grep PORT
+# example: PORT=5907  PASSWD=lab
+
+# open with any VNC client on the host:
+#   vnc://localhost:5907   (password: lab)
+#   TigerVNC / Remmina / macOS Screen Sharing → localhost:5907
+```
+
+Alpine `nocloud` images often have **no root password** — use the console getty to log in or set one. `onevm ssh` only works if the guest has SSH + credentials.
+
+```bash
+# alternative: SSH tunnel via the front-end
+docker exec -it one-lab-frontend bash -lc \
+  'su - oneadmin -c "ssh -N -L 5907:node1:5907 node1"'
+
+# OpenNebula helper (needs a VNC client available)
+docker exec -it one-lab-frontend bash -lc 'su - oneadmin -c "onevm vnc alpine-lab-01"'
+```
+
 ### Alternative: docker run (without compose)
 
 ```bash
