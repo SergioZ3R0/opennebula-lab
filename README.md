@@ -127,26 +127,36 @@ open http://localhost:2616   # oneadmin / opennebula
 
 ### Access a VM console (VNC)
 
-VMs get a VNC display on the **node** (`5900 + display`). Compose publishes `5900-5907`.
+VMs expose a VNC display on the **node** (`5900 + display`). Compose publishes `5900-5915` on the host.
+
+**Browsers do not open `vnc://` URLs.** This lab does **not** ship a web VNC client — you need a desktop VNC viewer installed on your machine.
 
 ```bash
-# which port does your VM use?
-docker exec one-lab-frontend bash -lc 'su - oneadmin -c "onevm show alpine-lab-01"' | grep PORT
-# example: PORT=5907  PASSWD=lab
+# which port / password does your VM use?
+docker exec one-lab-frontend bash -lc 'su - oneadmin -c "onevm show alpine-lab-01"' | grep -E 'PORT|PASSWD'
+# example: PORT=5908  PASSWD=lab
+```
 
-# open with any VNC client on the host:
-#   vnc://localhost:5907   (password: lab)
-#   TigerVNC / Remmina / macOS Screen Sharing → localhost:5907
+```bash
+# install a client once (Debian/Ubuntu)
+sudo apt install tigervnc-viewer
+# or: sudo apt install remmina remmina-plugin-vnc
+
+vncviewer localhost:5908    # password from PASSWD (lab)
+```
+
+Optional: SSH tunnel if you prefer not to publish VNC ports:
+
+```bash
+docker exec -it one-lab-frontend bash -lc \
+  'su - oneadmin -c "ssh -N -L 5908:node1:5908 node1"'
+# then vncviewer localhost:5908
 ```
 
 Alpine `nocloud` images often have **no root password** — use the console getty to log in or set one. `onevm ssh` only works if the guest has SSH + credentials.
 
 ```bash
-# alternative: SSH tunnel via the front-end
-docker exec -it one-lab-frontend bash -lc \
-  'su - oneadmin -c "ssh -N -L 5907:node1:5907 node1"'
-
-# OpenNebula helper (needs a VNC client available)
+# OpenNebula helper (still needs a VNC client on the host)
 docker exec -it one-lab-frontend bash -lc 'su - oneadmin -c "onevm vnc alpine-lab-01"'
 ```
 
