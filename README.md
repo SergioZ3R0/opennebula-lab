@@ -281,7 +281,9 @@ Real host state, VM lifecycle, datastores, ACLs and quotas — enough to reprodu
 
 ## How images are published
 
-CI (`.github/workflows/publish.yml`) builds and pushes on every push to `main` (and on tags `v*`):
+CI (`.github/workflows/publish.yml`) builds and pushes **only when image sources change** (`frontend/**`, `node/**`) or on tags `v*` / manual dispatch. README/docs-only commits do **not** rebuild packages.
+
+Tags on push to `main`:
 
 - `ghcr.io/sergioz3r0/opennebula-lab-frontend:7.4` / `:latest`
 - `ghcr.io/sergioz3r0/opennebula-lab-node:7.4` / `:latest`
@@ -289,6 +291,8 @@ CI (`.github/workflows/publish.yml`) builds and pushes on every push to `main` (
 Package pages:
 - https://github.com/users/SergioZ3R0/packages/container/package/opennebula-lab-frontend
 - https://github.com/users/SergioZ3R0/packages/container/package/opennebula-lab-node
+
+To force a rebuild without code changes: **Actions → publish → Run workflow**.
 
 ## Design notes / weight
 

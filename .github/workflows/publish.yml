@@ -3,6 +3,11 @@ name: publish
 on:
   push:
     branches: [main, master]
+    # Only rebuild images when image sources change — not on README/docs-only commits
+    paths:
+      - "frontend/**"
+      - "node/**"
+      - ".github/workflows/publish.yml"
     tags: ["v*"]
   workflow_dispatch:
 
@@ -64,3 +69,4 @@ jobs:
             DEBIAN_RELEASE=13
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
