@@ -1,6 +1,6 @@
 # one-lab
 
-**OpenNebula 7.4 self-contained lab** in Docker: front-end (oned + FireEdge + scheduler) + KVM compute node.
+**OpenNebula 7.4 self-contained lab** in Docker: front-end (oned + FireEdge) + KVM compute node.
 
 https://github.com/SergioZ3R0/opennebula-lab
 
@@ -38,30 +38,49 @@ Node also has `virsh` for KVM/libvirt inspection.
 - `/dev/kvm` on the host (hardware virtualization)
 - ~2–4 GB free RAM for the full lab with a tiny VM
 
-## Quick start
+## Docker images
+
+Images are published on **GitHub Container Registry (GHCR)**. They are **public** — no login needed to pull.
+
+| Image | Pull command |
+|-------|----------------|
+| Front-end | `docker pull ghcr.io/sergioz3r0/opennebula-lab-frontend:7.4` |
+| KVM node | `docker pull ghcr.io/sergioz3r0/opennebula-lab-node:7.4` |
+
+Tags:
+
+| Tag | Meaning |
+|-----|---------|
+| `7.4` | OpenNebula 7.4 (pinned, recommended) |
+| `latest` | Latest build from `main` |
+
+Example:
+
+```bash
+docker pull ghcr.io/sergioz3r0/opennebula-lab-frontend:7.4
+docker pull ghcr.io/sergioz3r0/opennebula-lab-node:7.4
+```
+
+## Quick start (Docker Compose)
 
 ```bash
 git clone https://github.com/SergioZ3R0/opennebula-lab.git
 cd opennebula-lab
 cp .env.example .env
-make up
+docker compose pull    # pulls the GHCR images above
+docker compose up -d
 # wait ~1–2 min for host ON + FireEdge
-make smoke
 ```
 
-Or pull published images (no build):
+Smoke test:
 
 ```bash
-cp .env.example .env
-IMAGE_OWNER=SergioZ3R0 docker compose pull
-IMAGE_OWNER=SergioZ3R0 docker compose up -d
+make smoke
+# or manually:
+docker exec one-lab-frontend bash -lc 'su - oneadmin -c "onehost list"'
 ```
 
-Images:
-- `ghcr.io/sergioz3r0/opennebula-lab-frontend:7.4`
-- `ghcr.io/sergioz3r0/opennebula-lab-node:7.4`
-
-Then:
+Then connect:
 
 ```bash
 # one9s
@@ -74,28 +93,59 @@ docker exec -it one-lab-frontend bash -lc 'su - oneadmin -c "onevm list"'
 open http://localhost:2616   # oneadmin / opennebula
 ```
 
+### Alternative: docker run (without compose)
+
+```bash
+docker network create one-lab
+
+docker run -d --name one-lab-node1 --hostname node1 \
+  --network one-lab \
+  --privileged \
+  --device /dev/kvm \
+  -v one-ssh:/var/lib/one/.ssh \
+  ghcr.io/sergioz3r0/opennebula-lab-node:7.4
+
+docker run -d --name one-lab-frontend --hostname opennebula \
+  --network one-lab \
+  -p 2633:2633 -p 2616:2616 \
+  -e ONEADMIN_PASSWORD=opennebula \
+  -e REGISTER_HOSTS=node1 \
+  -v one-data:/var/lib/one \
+  -v one-ssh:/var/lib/one/.ssh \
+  ghcr.io/sergioz3r0/opennebula-lab-frontend:7.4
+```
+
 ## Configuration (`.env`)
 
 | Var | Default | Description |
 |-----|---------|-------------|
-| `ONE_VERSION` | `7.4` | OpenNebula package series |
+| `ONE_VERSION` | `7.4` | OpenNebula package series / image tag |
 | `ONEADMIN_PASSWORD` | `opennebula` | oneadmin password (XML-RPC + FireEdge) |
-| `REGISTER_HOSTS` | `node1` | Hosts to register (space separated) |
+| `REGISTER_HOSTS` | `node1` | Hosts to auto-register (space separated) |
 | `SEED_NETWORK` | `dummy` | `dummy` \| `nat` \| `none` |
-| `SEED_TINY_IMAGE` | `false` | Import a tiny Alpine qcow2 on first boot |
+| `SEED_TINY_IMAGE` | `false` | Import a tiny Alpine cloud image on first boot |
 | `SETUP_NAT` | `false` | Create `br0` + MASQUERADE on nodes (use with `SEED_NETWORK=nat`) |
 | `XMLRPC_PORT` / `FIREEDGE_PORT` | `2633` / `2616` | Host port mappings |
+
+The compose file defaults to:
+
+```
+ghcr.io/sergioz3r0/opennebula-lab-frontend:7.4
+ghcr.io/sergioz3r0/opennebula-lab-node:7.4
+```
 
 ## Everyday commands
 
 ```bash
-make build      # build images locally
-make up         # start
-make logs       # follow logs
-make smoke      # XML-RPC + onehost + onevm checks
-make fe-shell   # shell in front-end
-make node-shell # shell in node
-make reset      # wipe volumes (fresh lab)
+docker compose pull    # refresh images from GHCR
+docker compose up -d   # start
+docker compose down    # stop (keep volumes)
+make logs              # follow logs
+make smoke             # XML-RPC + onehost + onevm checks
+make fe-shell          # shell in front-end
+make node-shell        # shell in node
+make reset             # wipe volumes (fresh lab)
+make build             # build images locally (instead of pull)
 ```
 
 Multi-node:
@@ -112,13 +162,23 @@ SEED_NETWORK=nat
 SETUP_NAT=true
 ```
 
+## Build images yourself (optional)
+
+If you prefer building instead of pulling from GHCR:
+
+```bash
+docker compose build
+# or
+make build
+```
+
 ## Architecture
 
 ```
 docker compose
 ├── opennebula (frontend)          debian:13-slim + OpenNebula 7.4 CE
 │   ├── oned :2633                 XML-RPC (one9s, GOCA, CLI)
-│   ├── scheduler / onegate / oneflow
+│   ├── onegate / oneflow
 │   └── FireEdge :2616             modern web UI
 │       └── SSH as oneadmin ─────────────────────┐
 └── node1 (kvm)                    debian:13-slim + opennebula-node-kvm
@@ -141,22 +201,18 @@ export ONE_XMLRPC="http://localhost:2633/RPC2"
 
 You get real host state, real VM lifecycle, datastores, ACLs and quotas — enough to reproduce issues safely.
 
-## Publishing to GHCR
+## How images are published
 
-Images are public and free to pull on GHCR (container registry currently free from GitHub).
-
-This repo builds and pushes:
+CI (`.github/workflows/publish.yml`) builds and pushes on every push to `main` (and on tags `v*`):
 
 - `ghcr.io/sergioz3r0/opennebula-lab-frontend:7.4`
+- `ghcr.io/sergioz3r0/opennebula-lab-frontend:latest`
 - `ghcr.io/sergioz3r0/opennebula-lab-node:7.4`
+- `ghcr.io/sergioz3r0/opennebula-lab-node:latest`
 
-Workflow: `.github/workflows/publish.yml` (push to `main` or tags `v*`).
-
-Users can then run without building:
-
-```bash
-IMAGE_OWNER=SergioZ3R0 docker compose pull && IMAGE_OWNER=SergioZ3R0 docker compose up -d
-```
+Package pages:
+- https://github.com/users/SergioZ3R0/packages/container/package/opennebula-lab-frontend
+- https://github.com/users/SergioZ3R0/packages/container/package/opennebula-lab-node
 
 ## Design notes / weight
 
@@ -165,9 +221,9 @@ IMAGE_OWNER=SergioZ3R0 docker compose pull && IMAGE_OWNER=SergioZ3R0 docker comp
 - No legacy Ruby Sunstone (FireEdge is the UI since 6.10)
 - SQLite, not MySQL
 - Node image includes **ruby** (IM probes) + **dbus** (virsh/libvirt) — required for a working KVM host
-- Uncompressed sizes (pull on GHCR is compressed, smaller):
-  - frontend ≈ **1.6 GB** (OpenNebula + FireEdge + Node.js)
-  - node ≈ **1.0 GB** (qemu + libvirt + ruby)
+- Uncompressed sizes (GHCR pull is compressed, smaller):
+  - frontend ≈ **1.65 GB** (OpenNebula + FireEdge + Node.js + tools)
+  - node ≈ **1.17 GB** (qemu + libvirt + ruby + tools)
 - Runtime RAM: oned+sqlite ≈ 200–300 MB; one tiny VM ≈ +256 MB
 - Requires `/dev/kvm` on the Docker host
 
@@ -177,8 +233,9 @@ IMAGE_OWNER=SergioZ3R0 docker compose pull && IMAGE_OWNER=SergioZ3R0 docker comp
 |---------|-------|
 | Host stuck in `init`/`err` | `docker logs one-lab-frontend` → oned.log; SSH from FE: `docker exec one-lab-frontend bash -lc 'su - oneadmin -c "ssh node1 true"'` |
 | No `/dev/kvm` | Host needs VT-x/AMD-V; nested virt may need extra flags |
-| FireEdge not up | `docker exec one-lab-frontend bash -lc 'su - oneadmin -c "fireedge start"'` |
+| FireEdge not up | `docker exec one-lab-frontend bash -lc 'su - oneadmin -c "fireedge-server start"'` |
 | Permission denied XML-RPC | Password mismatch: check `.env` `ONEADMIN_PASSWORD` vs `ONE_AUTH` |
+| `docker pull` denied | Images are public; if still denied check the tag (`7.4` vs `latest`) |
 
 ## License
 
