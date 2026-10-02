@@ -35,8 +35,40 @@ Node also has `virsh` for KVM/libvirt inspection.
 ## Requirements
 
 - Docker + Docker Compose v2
-- `/dev/kvm` on the host (hardware virtualization)
+- `/dev/kvm` on the host (hardware virtualization: VT-x/AMD-V)
 - ~2–4 GB free RAM for the full lab with a tiny VM
+- Compose service uses `cgroup: host` + `/sys/fs/cgroup` bind mount (required for libvirt/qemu in containers)
+
+## Boot a VM
+
+```bash
+# .env
+SEED_TINY_IMAGE=true
+
+docker compose pull && docker compose up -d
+# wait for host ON, then:
+docker exec one-lab-frontend bash -lc 'su - oneadmin -c "oneimage list; onehost list"'
+```
+
+Then create a template and instantiate (or use FireEdge UI / one9s):
+
+```bash
+docker exec -it one-lab-frontend bash -lc 'su - oneadmin'
+onevm list
+```
+
+Verified: Alpine tiny cloud image boots on `node1` with KVM (`virsh list` → `running`).
+
+### What the lab needs for real VMs
+
+| Piece | Why |
+|-------|-----|
+| `/dev/kvm` | KVM acceleration |
+| `cgroup: host` | libvirt creates qemu cgroups |
+| FE `sshd` | qcow2 TM clone: node pulls disks from FE |
+| `virtlogd` | libvirt qemu log socket |
+| bridges `onebr0`/`br0` | dummy/NAT vnet XML references them |
+| `/dev/kvm` group access | oneadmin must read/write kvm device |
 
 ## Docker images
 
@@ -123,7 +155,7 @@ docker run -d --name one-lab-frontend --hostname opennebula \
 | `ONEADMIN_PASSWORD` | `opennebula` | oneadmin password (XML-RPC + FireEdge) |
 | `REGISTER_HOSTS` | `node1` | Hosts to auto-register (space separated) |
 | `SEED_NETWORK` | `dummy` | `dummy` \| `nat` \| `none` |
-| `SEED_TINY_IMAGE` | `false` | Import a tiny Alpine cloud image on first boot |
+| `SEED_TINY_IMAGE` | `false` | Import a tiny Alpine cloud image on first boot (use `/var/tmp` — datastore RESTRICTED_DIRS) |
 | `SETUP_NAT` | `false` | Create `br0` + MASQUERADE on nodes (use with `SEED_NETWORK=nat`) |
 | `XMLRPC_PORT` / `FIREEDGE_PORT` | `2633` / `2616` | Host port mappings |
 
@@ -232,7 +264,12 @@ Package pages:
 | Symptom | Check |
 |---------|-------|
 | Host stuck in `init`/`err` | `docker logs one-lab-frontend` → oned.log; SSH from FE: `docker exec one-lab-frontend bash -lc 'su - oneadmin -c "ssh node1 true"'` |
-| No `/dev/kvm` | Host needs VT-x/AMD-V; nested virt may need extra flags |
+| No `/dev/kvm` | Host needs VT-x/AMD-V; node entrypoint chmods kvm and adds oneadmin to its group |
+| `CPU tuning is not available` | Missing `cgroup: host` in compose / cgroup bind mount |
+| `Cannot access KVM kernel module` | `/dev/kvm` not passed or oneadmin lacks device permission |
+| VM `PROLOG_FAILURE` (copy disk) | FE sshd must run — node pulls qcow2 from FE |
+| `Cannot get interface MTU on onebr0` | Node must create lab bridges (`onebr0`, `br0`) |
+| Image import `RESTRICTED_DIRS` | Put qcow2 under `/var/tmp` (SAFE_DIRS), not `/tmp` |
 | FireEdge not up | `docker exec one-lab-frontend bash -lc 'su - oneadmin -c "fireedge-server start"'` |
 | Permission denied XML-RPC | Password mismatch: check `.env` `ONEADMIN_PASSWORD` vs `ONE_AUTH` |
 | `docker pull` denied | Images are public; if still denied check the tag (`7.4` vs `latest`) |

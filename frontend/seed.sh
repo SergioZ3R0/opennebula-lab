@@ -72,20 +72,42 @@ EOF
   fi
 fi
 
+# ensure dummy/NAT networks have an address range (lease allocation)
+ensure_ar() {
+  local vnet="$1" ip="$2" size="$3" gw="$4" mask="$5"
+  if onevnet show "${vnet}" >/dev/null 2>&1; then
+    if ! onevnet show "${vnet}" --xml 2>/dev/null | grep -q '<AR>'; then
+      log "Adding AR to ${vnet}"
+      onevnet addar "${vnet}" --ip "${ip}" --size "${size}" --gateway "${gw}" --netmask "${mask}" \
+        || log "WARN: addar failed for ${vnet}"
+    fi
+  fi
+}
+ensure_ar lab-public 192.168.100.2 200 192.168.100.1 255.255.255.0
+ensure_ar lab-nat 10.10.10.2 100 10.10.10.1 255.255.255.0
+
 # --- tiny image (optional) ---------------------------------------------------
+# OpenNebula default datastore RESTRICTED_DIRS="/" and SAFE_DIRS="/var/tmp"
+# so image sources must live under /var/tmp (not /tmp).
 if [ "${SEED_TINY_IMAGE}" = "true" ]; then
   if ! oneimage show "${TINY_IMAGE_NAME}" >/dev/null 2>&1; then
     log "Downloading tiny cloud image: ${TINY_IMAGE_URL}"
-    tmp="/tmp/${TINY_IMAGE_NAME}.qcow2"
+    tmp="/var/tmp/${TINY_IMAGE_NAME}.qcow2"
     if curl -fL --retry 3 -o "${tmp}" "${TINY_IMAGE_URL}"; then
-      oneimage create \
-        --name "${TINY_IMAGE_NAME}" \
-        --datastore default \
-        --type OS \
-        --persistent \
-        "${tmp}" && log "Image ${TINY_IMAGE_NAME} imported" \
+      chmod 644 "${tmp}"
+      cat > "/var/tmp/${TINY_IMAGE_NAME}.xml" <<EOF
+<IMAGE>
+  <NAME>${TINY_IMAGE_NAME}</NAME>
+  <TYPE>OS</TYPE>
+  <PERSISTENT>YES</PERSISTENT>
+  <PATH>${tmp}</PATH>
+  <DEV_PREFIX>vd</DEV_PREFIX>
+  <FORMAT>qcow2</FORMAT>
+</IMAGE>
+EOF
+      oneimage create "/var/tmp/${TINY_IMAGE_NAME}.xml" -d default \
+        && log "Image ${TINY_IMAGE_NAME} imported" \
         || log "WARN: oneimage create failed"
-      rm -f "${tmp}"
     else
       log "WARN: could not download tiny image"
     fi

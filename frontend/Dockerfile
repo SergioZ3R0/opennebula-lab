@@ -16,6 +16,7 @@ RUN apt-get update \
         curl \
         procps \
         openssh-client \
+        openssh-server \
         rsync \
         tini \
         iproute2 \
@@ -63,12 +64,16 @@ COPY entrypoint.sh /entrypoint.sh
 COPY seed.sh /seed.sh
 COPY motd /etc/motd
 RUN chmod +x /entrypoint.sh /seed.sh \
+    && mkdir -p /run/sshd \
+    && rm -f /etc/ssh/ssh_host_* \
     && echo '[ -r /etc/bash_completion ] && . /etc/bash_completion' >> /etc/bash.bashrc \
     && echo 'alias ll="ls -alF"' >> /root/.bashrc \
     && echo 'alias ll="ls -alF"' >> /home/oneadmin/.bashrc 2>/dev/null || true \
     && chown oneadmin:oneadmin /home/oneadmin/.bashrc 2>/dev/null || true
 
-EXPOSE 2633 2616
+# sshd is required: qcow2 TM clone runs ON THE NODE and pulls disks from the
+# front-end via ssh (local datastore is not shared).
+EXPOSE 2633 2616 22
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=90s --retries=10 \
     CMD curl -sf -o /dev/null -X POST http://127.0.0.1:2633/RPC2 -d '<methodCall><methodName>system.version</methodName></methodCall>' \

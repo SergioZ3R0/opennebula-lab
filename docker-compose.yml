@@ -16,6 +16,7 @@ x-node: &node
       OPENNEBULA_VERSION: ${ONE_VERSION:-7.4}
       DEBIAN_RELEASE: ${DEBIAN_RELEASE:-13}
   privileged: true
+  cgroup: host
   devices:
     - /dev/kvm:/dev/kvm
   cap_add:
@@ -23,6 +24,7 @@ x-node: &node
     - SYS_ADMIN
   volumes:
     - one-ssh:/var/lib/one/.ssh
+    - /sys/fs/cgroup:/sys/fs/cgroup
   networks:
     - one-lab
 
@@ -34,6 +36,7 @@ services:
     ports:
       - "${XMLRPC_PORT:-2633}:2633"
       - "${FIREEDGE_PORT:-2616}:2616"
+      - "${SSH_PORT:-2222}:22"
     environment:
       ONEADMIN_PASSWORD: ${ONEADMIN_PASSWORD:-opennebula}
       REGISTER_HOSTS: ${REGISTER_HOSTS:-node1}

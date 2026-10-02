@@ -22,6 +22,18 @@ chown -R oneadmin:oneadmin "${ONE_HOME}" /var/log/one
 usermod -aG libvirt oneadmin 2>/dev/null || true
 usermod -aG kvm oneadmin 2>/dev/null || true
 usermod -aG libvirt-qemu oneadmin 2>/dev/null || true
+# /dev/kvm group id can differ inside containers (host kvm vs container sgx)
+if [ -e /dev/kvm ]; then
+  KVM_GID="$(stat -c '%g' /dev/kvm 2>/dev/null || echo "")"
+  if [ -n "${KVM_GID}" ]; then
+    getent group "${KVM_GID}" >/dev/null 2>&1 || groupadd -g "${KVM_GID}" kvm-device 2>/dev/null || true
+    usermod -aG "${KVM_GID}" oneadmin 2>/dev/null || true
+  fi
+  chmod 666 /dev/kvm 2>/dev/null || true
+fi
+if [ -e /dev/vhost-net ]; then
+  chmod 666 /dev/vhost-net 2>/dev/null || true
+fi
 
 # run qemu processes as oneadmin (package usually does this; enforce for containers)
 QEMU_CONF="/etc/libvirt/qemu.conf"
@@ -98,6 +110,20 @@ if [ ! -S /var/run/dbus/system_bus_socket ]; then
 fi
 sleep 1
 
+# --- virtlogd/virtlockd (libvirt needs these to create qemu domains) ---------
+log "Starting virtlogd + virtlockd"
+if [ ! -S /run/libvirt/virtlogd-sock ]; then
+  mkdir -p /run/libvirt
+  virtlogd -d 2>/dev/null || /usr/sbin/virtlogd -d 2>/dev/null \
+    || /usr/sbin/virtlogd >/tmp/virtlogd.out 2>/tmp/virtlogd.err &
+fi
+if [ ! -S /run/libvirt/virtlockd-sock ]; then
+  virtlockd -d 2>/dev/null || /usr/sbin/virtlockd -d 2>/dev/null \
+    || /usr/sbin/virtlockd >/tmp/virtlockd.out 2>/tmp/virtlockd.err &
+fi
+sleep 1
+ls -la /run/libvirt/ 2>/dev/null || true
+
 # --- libvirtd ---------------------------------------------------------------
 log "Starting libvirtd"
 libvirtd -d --listen 2>/dev/null || /usr/sbin/libvirtd -d || {
@@ -112,6 +138,15 @@ for i in $(seq 1 30); do
     break
   fi
   sleep 1
+done
+
+# --- lab bridges (dummy/vnet XML references onebr0 etc; libvirt needs them) --
+log "Creating lab bridges"
+for br in onebr0 onebr.10 br0; do
+  if ! ip link show "${br}" >/dev/null 2>&1; then
+    ip link add name "${br}" type bridge || true
+  fi
+  ip link set "${br}" up || true
 done
 
 # --- optional NAT bridge -----------------------------------------------------
@@ -146,6 +181,10 @@ while true; do
     log "libvirtd died, restarting"
     libvirtd -d 2>/dev/null || /usr/sbin/libvirtd >/tmp/libvirtd.out 2>/tmp/libvirtd.err &
     sleep 2
+  fi
+  if ! pgrep -x virtlogd >/dev/null 2>&1; then
+    log "virtlogd died, restarting"
+    virtlogd -d 2>/dev/null || /usr/sbin/virtlogd -d 2>/dev/null || true
   fi
   if ! pgrep -x sshd >/dev/null 2>&1; then
     log "sshd died, restarting"

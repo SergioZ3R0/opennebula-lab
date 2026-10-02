@@ -41,20 +41,48 @@ chmod 644 "${ONE_SSH}/id_rsa.pub" 2>/dev/null || true
 chown -R oneadmin:oneadmin "${ONE_SSH}"
 
 # OpenNebula ships a friendly ssh_config for oneadmin
-if [ ! -f "${ONE_SSH}/config" ]; then
-  cat > "${ONE_SSH}/config" <<EOF
+# Lab containers regenerate host keys on recreate — be permissive
+cat > "${ONE_SSH}/config" <<EOF
 Host *
   IdentityFile ${ONE_SSH}/id_rsa
-  StrictHostKeyChecking accept-new
-  UserKnownHostsFile ${ONE_SSH}/known_hosts
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
   LogLevel ERROR
+  ControlMaster auto
+  ControlPath ${ONE_SSH}/cm-%r@%h:%p
+  ControlPersist 5m
 EOF
-  chown oneadmin:oneadmin "${ONE_SSH}/config"
-  chmod 600 "${ONE_SSH}/config"
-fi
+chown oneadmin:oneadmin "${ONE_SSH}/config"
+chmod 600 "${ONE_SSH}/config"
+# drop stale known_hosts (host keys change when containers are recreated)
+rm -f "${ONE_SSH}/known_hosts"
 touch "${ONE_SSH}/known_hosts"
 chown oneadmin:oneadmin "${ONE_SSH}/known_hosts"
 chmod 600 "${ONE_SSH}/known_hosts"
+
+# --- sshd (required: node pulls qcow2 disks from FE via ssh) ------------------
+log "Starting sshd on front-end"
+if [ ! -f /etc/ssh/ssh_host_rsa_key ]; then
+  ssh-keygen -A
+fi
+mkdir -p /run/sshd
+# accept the shared oneadmin pubkey (node also writes it into the same volume)
+if [ -f "${ONE_SSH}/id_rsa.pub" ]; then
+  touch "${ONE_SSH}/authorized_keys"
+  if ! grep -qf "${ONE_SSH}/id_rsa.pub" "${ONE_SSH}/authorized_keys" 2>/dev/null; then
+    cat "${ONE_SSH}/id_rsa.pub" >> "${ONE_SSH}/authorized_keys"
+  fi
+  chown oneadmin:oneadmin "${ONE_SSH}/authorized_keys"
+  chmod 600 "${ONE_SSH}/authorized_keys"
+fi
+mkdir -p /etc/ssh/sshd_config.d
+cat > /etc/ssh/sshd_config.d/one-lab.conf <<'EOF'
+PermitRootLogin no
+PasswordAuthentication no
+PubkeyAuthentication yes
+MaxStartups 100:30:1000
+EOF
+/usr/sbin/sshd || log "WARN: sshd failed to start"
 
 # --- database migrate (quiet; oned also bootstraps on first start) ----------
 if command -v onedb >/dev/null 2>&1; then
@@ -194,6 +222,10 @@ while true; do
     log "oned not responding, restarting"
     su -s /bin/bash oneadmin -c "oned start" || su -s /bin/bash oneadmin -c "oned -f" &
     sleep 5
+  fi
+  if ! pgrep -x sshd >/dev/null 2>&1; then
+    log "fe sshd died, restarting"
+    /usr/sbin/sshd || true
   fi
   # retry host registration / recovery if any REGISTER_HOSTS are missing or not ON
   for host in ${REGISTER_HOSTS}; do
