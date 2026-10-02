@@ -1,0 +1,80 @@
+name: one-lab
+
+x-frontend: &frontend
+  image: ${REGISTRY:-ghcr.io}/${IMAGE_OWNER:-sergioz3r0}/opennebula-lab-frontend:${ONE_VERSION:-7.4}
+  build:
+    context: ./frontend
+    args:
+      OPENNEBULA_VERSION: ${ONE_VERSION:-7.4}
+      DEBIAN_RELEASE: ${DEBIAN_RELEASE:-13}
+
+x-node: &node
+  image: ${REGISTRY:-ghcr.io}/${IMAGE_OWNER:-sergioz3r0}/opennebula-lab-node:${ONE_VERSION:-7.4}
+  build:
+    context: ./node
+    args:
+      OPENNEBULA_VERSION: ${ONE_VERSION:-7.4}
+      DEBIAN_RELEASE: ${DEBIAN_RELEASE:-13}
+  privileged: true
+  devices:
+    - /dev/kvm:/dev/kvm
+  cap_add:
+    - NET_ADMIN
+    - SYS_ADMIN
+  volumes:
+    - one-ssh:/var/lib/one/.ssh
+  networks:
+    - one-lab
+
+services:
+  opennebula:
+    <<: *frontend
+    container_name: one-lab-frontend
+    hostname: opennebula
+    ports:
+      - "${XMLRPC_PORT:-2633}:2633"
+      - "${FIREEDGE_PORT:-2616}:2616"
+    environment:
+      ONEADMIN_PASSWORD: ${ONEADMIN_PASSWORD:-opennebula}
+      REGISTER_HOSTS: ${REGISTER_HOSTS:-node1}
+      SEED_NETWORK: ${SEED_NETWORK:-dummy}
+      SEED_TINY_IMAGE: ${SEED_TINY_IMAGE:-false}
+      TINY_IMAGE_URL: ${TINY_IMAGE_URL:-}
+      ONE_VERSION: ${ONE_VERSION:-7.4}
+    volumes:
+      - one-data:/var/lib/one
+      - one-ssh:/var/lib/one/.ssh
+    networks:
+      - one-lab
+    depends_on:
+      node1:
+        condition: service_started
+    restart: unless-stopped
+
+  node1:
+    <<: *node
+    container_name: one-lab-node1
+    hostname: node1
+    environment:
+      SETUP_NAT: ${SETUP_NAT:-false}
+      ONE_VERSION: ${ONE_VERSION:-7.4}
+    restart: unless-stopped
+
+  # optional second node: docker compose --profile multi up
+  node2:
+    <<: *node
+    container_name: one-lab-node2
+    hostname: node2
+    profiles: ["multi"]
+    environment:
+      SETUP_NAT: ${SETUP_NAT:-false}
+      ONE_VERSION: ${ONE_VERSION:-7.4}
+    restart: unless-stopped
+
+networks:
+  one-lab:
+    driver: bridge
+
+volumes:
+  one-data:
+  one-ssh:

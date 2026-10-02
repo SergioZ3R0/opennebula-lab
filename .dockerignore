@@ -1,0 +1,6 @@
+.git
+.env
+*.md
+*.qcow2
+docker-compose*.yml
+Makefile
