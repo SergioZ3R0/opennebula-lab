@@ -239,4 +239,6 @@ Package pages:
 
 ## License
 
-Same as one9s / Apache-2.0 friendly. Lab scripts are intentionally simple and meant to be forked.
+Licensed under the **Apache License, Version 2.0**. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+Lab scripts are intentionally simple and meant to be forked.
