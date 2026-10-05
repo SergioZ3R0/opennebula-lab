@@ -285,6 +285,7 @@ make node-shell        # shell in node
 make reset             # wipe volumes (fresh lab)
 make build             # build images locally (instead of pull)
 make help              # list targets
+make lint              # yamllint + compose config (CI runs shellcheck too)
 ```
 
 Day-to-day OpenNebula work happens **inside the front-end CLI** (`make fe-shell`, then `su - oneadmin`). This lab intentionally does **not** wrap `onevm` / `onetemplate` in Make targets so you learn the real tools.
@@ -394,6 +395,17 @@ Real host state, VM lifecycle, datastores, ACLs and quotas — enough to reprodu
 ## How images are published
 
 CI (`.github/workflows/publish.yml`) builds and pushes **only when image sources change** (`frontend/**`, `node/**`) or on tags `v*` / manual dispatch. README/docs-only commits do **not** rebuild packages.
+
+CI (`.github/workflows/lint.yml`) runs on **push to main** and **pull requests**:
+
+| Job | What it checks |
+|-----|----------------|
+| shellcheck | `*.sh` (entrypoints, seed) |
+| yamllint | `docker-compose.yml` + workflows (`.yamllint.yml`) |
+| docker compose config | compose file resolves with `.env.example` |
+| conventional commits | PR/push commit subjects use Conventional Commits; no em-dashes |
+
+Locally: `make lint` (yamllint + compose config). Shellcheck is enforced in GitHub Actions.
 
 Tags on push to `main`:
 

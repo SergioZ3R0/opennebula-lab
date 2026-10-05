@@ -6,7 +6,7 @@ ONE_VERSION ?= 7.4
 XMLRPC_PORT ?= 2633
 FIREEDGE_PORT ?= 2616
 
-.PHONY: help build up down reset logs smoke doctor fe-shell node-shell pull
+.PHONY: help build up down reset logs smoke doctor fe-shell node-shell pull lint
 
 help:
 	@echo "one-lab targets:"
@@ -17,6 +17,7 @@ help:
 	@echo "  make logs      - tail all logs"
 	@echo "  make smoke     - lab health (XML-RPC, host, daemons)"
 	@echo "  make doctor    - lab diagnostics (KVM, bridges, daemons)"
+	@echo "  make lint      - yamllint + compose config (same as CI)"
 	@echo "  make fe-shell / node-shell"
 	@echo ""
 	@echo "OpenNebula itself: use the CLI inside the FE (su - oneadmin)."
@@ -39,6 +40,15 @@ logs:
 
 pull:
 	$(COMPOSE) pull || true
+
+# Static checks aligned with .github/workflows/lint.yml (shellcheck runs in CI)
+lint:
+	@command -v yamllint >/dev/null || { echo "yamllint not installed"; exit 1; }
+	yamllint -c .yamllint.yml docker-compose.yml .github/workflows/*.yml
+	@cp -f .env.example .env.lint-check 2>/dev/null || true
+	docker compose --env-file .env.example config --quiet
+	@rm -f .env.lint-check
+	@echo "lint OK (yamllint + compose config)"
 
 # OpenNebula 7.x XML-RPC: one.system.version + session user:pass
 define RPC_CHECK
