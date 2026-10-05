@@ -60,7 +60,7 @@ Node also has `virsh` for KVM/libvirt inspection.
 | VM boot | Ubuntu 24.04 cloud + cloud-init (`lab`/`lab` or `ubuntu`/`lab`) |
 | SSH into guest | from `node1` or `onevm ssh` (ProxyJump) |
 | FireEdge console | VNC in browser via guacd |
-| one9s | connects with `ONE_AUTH` / `ONE_XMLRPC` |
+| one9s | `one9s vault init` (or `ONE_AUTH` / `ONE_XMLRPC`) connects to XML-RPC |
 
 ## Quick start (Docker Compose)
 
@@ -80,15 +80,33 @@ make doctor            # optional deeper checks
 Then connect:
 
 ```bash
-# one9s
-ONE_AUTH="oneadmin:opennebula" ONE_XMLRPC="http://localhost:2633/RPC2" one9s
-
 # CLI
 docker exec -it one-lab-frontend bash -lc 'su - oneadmin -c "onevm list"'
 
 # FireEdge UI (console VNC in browser)
 open http://localhost:2616   # oneadmin / opennebula
 ```
+
+### one9s (optional TUI)
+
+Prefer the **encrypted vault** over exporting credentials every time:
+
+```bash
+# one-time setup against this lab
+one9s vault init
+#   endpoint: http://localhost:2633/RPC2
+#   auth:     oneadmin:opennebula   (or your ONEADMIN_PASSWORD)
+
+one9s            # prompts for the vault password
+```
+
+One-liner without vault (no password prompt, credentials in the shell):
+
+```bash
+ONE_AUTH="oneadmin:opennebula" ONE_XMLRPC="http://localhost:2633/RPC2" one9s
+```
+
+See [one9s](https://github.com/SergioZ3R0/one9s) for `vault encrypt` / `edit` / `ONE_VAULT_PASS`.
 
 ### Boot the seeded Ubuntu VM
 

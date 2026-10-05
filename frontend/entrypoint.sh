@@ -296,7 +296,8 @@ log "  XML-RPC : http://localhost:2633/RPC2"
 log "  FireEdge: http://localhost:2616  (oneadmin / ${ONEADMIN_PASSWORD})"
 log "  onegate : http://localhost:5030   (guest context API)"
 log "  oneflow : http://localhost:2474   (services)"
-log "  one9s   : ONE_AUTH=\"oneadmin:${ONEADMIN_PASSWORD}\" ONE_XMLRPC=\"http://localhost:2633/RPC2\""
+log "  one9s   : one9s vault init  (endpoint http://localhost:2633/RPC2, user oneadmin)"
+log "            or ONE_AUTH=\"oneadmin:${ONEADMIN_PASSWORD}\" ONE_XMLRPC=\"http://localhost:2633/RPC2\" one9s"
 log "  First boot with SEED_UBUNTU_IMAGE=true downloads ~600MB into the default datastore"
 
 # keep container alive; reap stray children; retry late host registration
