@@ -403,7 +403,6 @@ CI (`.github/workflows/lint.yml`) runs on **push to main** and **pull requests**
 | shellcheck | `*.sh` (entrypoints, seed) |
 | yamllint | `docker-compose.yml` + workflows (`.yamllint.yml`) |
 | docker compose config | compose file resolves with `.env.example` |
-| conventional commits | PR/push commit subjects use Conventional Commits; no em-dashes |
 
 Locally: `make lint` (yamllint + compose config). Shellcheck is enforced in GitHub Actions.
 
