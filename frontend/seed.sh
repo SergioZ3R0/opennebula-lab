@@ -15,7 +15,7 @@ TINY_IMAGE_URL="${TINY_IMAGE_URL:-https://dl-cdn.alpinelinux.org/alpine/v3.20/re
 TINY_IMAGE_NAME="${TINY_IMAGE_NAME:-alpine-tiny}"
 
 # wait until onedatastore works
-for i in $(seq 1 60); do
+for _ in $(seq 1 60); do
   if onedatastore list >/dev/null 2>&1; then
     break
   fi

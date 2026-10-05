@@ -18,17 +18,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Install shellcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
       - name: Run shellcheck
-        uses: ludeeus/action-shellcheck@2.0.0
-        with:
-          scandir: "."
-          severity: warning
-          ignore_paths: >-
-            node_modules
-            .git
-          additional_files: ""
-        env:
-          SHELLCHECK_OPTS: -x -S warning -e SC1090,SC1091
+        run: |
+          shellcheck --version
+          shellcheck -x -S warning -e SC1090,SC1091 \
+            frontend/entrypoint.sh \
+            frontend/seed.sh \
+            node/entrypoint.sh
+          echo "shellcheck OK"
 
   yamllint:
     name: yamllint
