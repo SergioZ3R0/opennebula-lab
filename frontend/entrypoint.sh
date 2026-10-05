@@ -5,10 +5,19 @@ log() { echo "[one-lab:fe] $*"; }
 
 ONEADMIN_PASSWORD="${ONEADMIN_PASSWORD:-opennebula}"
 REGISTER_HOSTS="${REGISTER_HOSTS:-node1}"
-SEED_NETWORK="${SEED_NETWORK:-dummy}"          # dummy | nat | none
+SEED_NETWORK="${SEED_NETWORK:-nat}"          # dummy | nat | none
+SEED_UBUNTU_IMAGE="${SEED_UBUNTU_IMAGE:-true}"
 SEED_TINY_IMAGE="${SEED_TINY_IMAGE:-false}"
 ONE_HOME="/var/lib/one"
 ONE_SSH="${ONE_HOME}/.ssh"
+ONE_AUTH_SESSION="oneadmin:${ONEADMIN_PASSWORD}"
+
+xmlrpc_ok() {
+  # OpenNebula 7.x XML-RPC: one.system.version with session string
+  curl -sf -X POST http://127.0.0.1:2633/RPC2 \
+    -d "<?xml version=\"1.0\"?><methodCall><methodName>one.system.version</methodName><params><param><value><string>${ONE_AUTH_SESSION}</string></value></param></params></methodCall>" \
+    2>/dev/null | grep -q '<boolean>1</boolean>'
+}
 
 log "OpenNebula ${ONE_VERSION:-?} front-end starting"
 
@@ -104,8 +113,7 @@ su -s /bin/bash oneadmin -c "oned start" >/tmp/oned.out 2>/tmp/oned.err || {
 # wait until XML-RPC answers
 log "Waiting for oned XML-RPC on :2633"
 for i in $(seq 1 90); do
-  if curl -sf -o /dev/null -X POST http://127.0.0.1:2633/RPC2 \
-      -d '<methodCall><methodName>system.version</methodName></methodCall>'; then
+  if xmlrpc_ok; then
     log "oned is up"
     break
   fi
@@ -120,10 +128,34 @@ done
 # scheduler runs inside oned as MAD (one_sched) in OpenNebula 7.x — no separate daemon
 log "Scheduler is managed by oned (SCHED_MAD=one_sched)"
 
-# optional services — ignore failures (not critical for lab)
-su -s /bin/bash oneadmin -c "onegate start" >/tmp/gate.out 2>/tmp/gate.err || true
-su -s /bin/bash oneadmin -c "oneflow start" >/tmp/flow.out 2>/tmp/flow.err \
-  || su -s /bin/bash oneadmin -c "opennebula-flow start" >/tmp/flow.out 2>/tmp/flow.err || true
+# --- onegate / oneflow (needed for services, context, multi-tier labs) -------
+# Debian packages do not ship /usr/bin wrappers for gate; start via ruby/oneflow-server.
+if [ -f /etc/one/onegate-server.conf ]; then
+  # listen on all interfaces so guests can reach onegate once routing exists
+  sed -i 's/:bind: 127.0.0.1/:bind: 0.0.0.0/' /etc/one/onegate-server.conf || true
+fi
+if [ -f /etc/one/oneflow-server.conf ]; then
+  sed -i 's/:host: 127.0.0.1/:host: 0.0.0.0/' /etc/one/oneflow-server.conf || true
+fi
+
+log "Starting oneflow"
+if command -v oneflow-server >/dev/null 2>&1; then
+  su -s /bin/bash oneadmin -c "oneflow-server start" >/tmp/flow.out 2>/tmp/flow.err \
+    || log "WARN: oneflow-server start failed: $(tr '\n' ' ' </tmp/flow.err 2>/dev/null)"
+else
+  log "WARN: oneflow-server binary not found"
+fi
+
+log "Starting onegate"
+if [ -f /usr/lib/one/onegate/onegate-server.rb ]; then
+  su -s /bin/bash oneadmin -c \
+    "nohup ruby /usr/lib/one/onegate/onegate-server.rb >>/var/log/one/onegate.log 2>&1 &" \
+    >/tmp/gate.out 2>/tmp/gate.err \
+    || log "WARN: onegate start failed: $(tr '\n' ' ' </tmp/gate.err 2>/dev/null)"
+else
+  log "WARN: onegate-server.rb not found"
+fi
+sleep 2
 
 # --- FireEdge ----------------------------------------------------------------
 log "Starting FireEdge"
@@ -203,22 +235,33 @@ for host in ${REGISTER_HOSTS}; do
 done
 
 # --- seed --------------------------------------------------------------------
-if [ "${SEED_NETWORK}" != "none" ] || [ "${SEED_TINY_IMAGE}" = "true" ]; then
-  SEED_NETWORK="${SEED_NETWORK}" SEED_TINY_IMAGE="${SEED_TINY_IMAGE}" \
+if [ "${SEED_NETWORK}" != "none" ] || [ "${SEED_UBUNTU_IMAGE}" = "true" ] || [ "${SEED_TINY_IMAGE}" = "true" ]; then
+  SEED_NETWORK="${SEED_NETWORK}" \
+  SEED_UBUNTU_IMAGE="${SEED_UBUNTU_IMAGE}" \
+  SEED_TINY_IMAGE="${SEED_TINY_IMAGE}" \
+  UBUNTU_IMAGE_URL="${UBUNTU_IMAGE_URL:-}" \
+  UBUNTU_IMAGE_NAME="${UBUNTU_IMAGE_NAME:-}" \
+  UBUNTU_TEMPLATE_NAME="${UBUNTU_TEMPLATE_NAME:-}" \
+  UBUNTU_VCPU="${UBUNTU_VCPU:-}" \
+  UBUNTU_MEMORY="${UBUNTU_MEMORY:-}" \
+  TINY_IMAGE_URL="${TINY_IMAGE_URL:-}" \
+  TINY_IMAGE_NAME="${TINY_IMAGE_NAME:-}" \
     su -s /bin/bash oneadmin -c "/seed.sh" || log "WARN: seed finished with errors"
 fi
 
 log "Lab front-end ready"
 log "  XML-RPC : http://localhost:2633/RPC2"
 log "  FireEdge: http://localhost:2616  (oneadmin / ${ONEADMIN_PASSWORD})"
+log "  onegate : http://localhost:5030   (guest context API)"
+log "  oneflow : http://localhost:2474   (services)"
 log "  one9s   : ONE_AUTH=\"oneadmin:${ONEADMIN_PASSWORD}\" ONE_XMLRPC=\"http://localhost:2633/RPC2\""
+log "  First boot with SEED_UBUNTU_IMAGE=true downloads ~600MB into the default datastore"
 
 # keep container alive; reap stray children; retry late host registration
 trap 'log "Shutting down"; su -s /bin/bash oneadmin -c "oned stop" || true; exit 0' SIGTERM SIGINT
 while true; do
   # restart oned if it dies (lab resilience)
-  if ! curl -sf -o /dev/null -X POST http://127.0.0.1:2633/RPC2 \
-      -d '<methodCall><methodName>system.version</methodName></methodCall>' 2>/dev/null; then
+  if ! xmlrpc_ok; then
     log "oned not responding, restarting"
     su -s /bin/bash oneadmin -c "oned start" || su -s /bin/bash oneadmin -c "oned -f" &
     sleep 5
@@ -226,6 +269,15 @@ while true; do
   if ! pgrep -x sshd >/dev/null 2>&1; then
     log "fe sshd died, restarting"
     /usr/sbin/sshd || true
+  fi
+  if ! pgrep -f "puma.*2474" >/dev/null 2>&1 && ! pgrep -f oneflow-server >/dev/null 2>&1; then
+    log "oneflow died, restarting"
+    su -s /bin/bash oneadmin -c "oneflow-server start" || true
+  fi
+  if ! pgrep -f "puma.*5030" >/dev/null 2>&1 && ! pgrep -f onegate-server >/dev/null 2>&1; then
+    log "onegate died, restarting"
+    su -s /bin/bash oneadmin -c \
+      "nohup ruby /usr/lib/one/onegate/onegate-server.rb >>/var/log/one/onegate.log 2>&1 &" || true
   fi
   # retry host registration / recovery if any REGISTER_HOSTS are missing or not ON
   for host in ${REGISTER_HOSTS}; do

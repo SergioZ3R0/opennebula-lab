@@ -1,27 +1,32 @@
 # one-lab
 
-**OpenNebula 7.4 self-contained lab** in Docker: front-end (oned + FireEdge) + KVM compute node that **boots real VMs**.
+**OpenNebula 7.4 self-contained lab** in Docker: front-end (oned + FireEdge + onegate + oneflow) + KVM compute node that **boots real VMs**.
 
 https://github.com/SergioZ3R0/opennebula-lab
 
 Built to fill a real gap: OpenNebula does not publish official container images for labs/testing. This is a light Debian-slim lab you can destroy and rebuild in seconds.
 
-## What you get
+**Audience:** people who want a **working base cluster** to learn and break OpenNebula (CLI, FireEdge, VMs, networks, services). Not a production installer. Advanced features (VDC, OneKS/K8s, multi-tenant) are left for you to add on top.
+
+## What you get (factory base)
 
 | Component | Ports | Notes |
 |-----------|-------|-------|
-| Front-end `opennebula` | `2633` XML-RPC, `2616` FireEdge, `22` SSH | oned, onegate, oneflow, FireEdge UI |
+| Front-end `opennebula` | `2633` XML-RPC, `2616` FireEdge, `22` SSH | oned, onegate `:5030`, oneflow `:2474`, CLI |
 | Node `node1` | `5900-5915` VM VNC | libvirt + qemu/KVM, auto-registered host |
 
-- Shared `oneadmin` SSH keypair across containers
-- Auto host registration (`onehost create node1 -i kvm -v kvm`)
-- **Real KVM VMs** (not mocks) — verified boot + SSH into guest
-- Networks: dummy (lifecycle only) or NAT bridge (`br0` + MASQUERADE)
-- Optional second node via compose profile `multi`
-- Sysadmin tools preinstalled (`ip`, `htop`, `tcpdump`, `virsh`, ...)
-- Public images on GHCR
+Default seed (`.env.example`):
 
-Networking (bridge, VLAN, VDC, multiple vnets, ...) is up to you — the lab only provides the base FE + KVM node.
+| Resource | Name | Purpose |
+|----------|------|---------|
+| VNET | `lab-nat` | bridge `br0`, `10.10.10.0/24`, NAT to internet |
+| VNET | `lab-public` | dummy `onebr0`, `192.168.100.0/24` (lifecycle / multi-NIC) |
+| Image | `ubuntu-cloud` | Ubuntu 24.04 cloudimg (downloaded on first boot) |
+| Template | `ubuntu-cloud-ssh` | cloud-init users `ubuntu`/`lab` and `lab`/`lab`, 1 vCPU / 1G |
+
+Also: shared `oneadmin` SSH keypair, auto host registration, sysadmin tools, public GHCR images.
+
+**Not preloaded on purpose:** extra users/ACLs/VDCs, OneKS clusters, web VNC, services you have not defined. The cluster is meant to be extended and broken by you.
 
 ### Included tools
 
@@ -32,7 +37,7 @@ nano | tree | jq | git | rsync | unzip | file
 psmisc | bash-completion | sudo
 ```
 
-OpenNebula CLI on the front-end: `onevm`, `onehost`, `onevnet`, `oneimage`, `onedatastore`, `oneuser`, `oneacl`...
+OpenNebula CLI on the front-end: `onevm`, `onehost`, `onevnet`, `oneimage`, `onedatastore`, `oneuser`, `oneacl`, `oneflow`, `onevdc`...
 Node also has `virsh` for KVM/libvirt inspection.
 
 ## Requirements
@@ -41,6 +46,7 @@ Node also has `virsh` for KVM/libvirt inspection.
 - `/dev/kvm` on the host (hardware virtualization: VT-x/AMD-V)
 - ~2–4 GB free RAM for the full lab with a VM
 - Compose uses `cgroup: host` + `/sys/fs/cgroup` bind (required for libvirt/qemu in containers)
+- First boot with Ubuntu seed downloads ~600MB into the default datastore
 
 ## Verified
 
@@ -48,8 +54,9 @@ Node also has `virsh` for KVM/libvirt inspection.
 |-------|--------|
 | Host `node1` | ON / MONITORED (CPU, memory, KVM) |
 | XML-RPC + FireEdge | up |
-| VM boot | Alpine + Ubuntu 24.04 with `-accel kvm` |
-| SSH into guest | `lab@10.10.10.2` (NAT + cloud-init) |
+| onegate / oneflow | up (`:5030` / `:2474`) |
+| VM boot | Ubuntu 24.04 cloud + cloud-init (`ubuntu`/`lab` or `lab`/`lab`) |
+| SSH into guest | `lab@10.10.10.2` or `ubuntu@10.10.10.x` (NAT) from `node1` or `onevm ssh` |
 | one9s | connects with `ONE_AUTH` / `ONE_XMLRPC` |
 
 ## Quick start (Docker Compose)
@@ -60,8 +67,9 @@ cd opennebula-lab
 cp .env.example .env
 docker compose pull    # pulls the GHCR images
 docker compose up -d
-# wait ~1–2 min for host ON + FireEdge
+# wait ~1-3 min (longer on first boot: Ubuntu image download)
 make smoke
+make doctor            # optional deeper checks
 ```
 
 Then connect:
@@ -77,42 +85,22 @@ docker exec -it one-lab-frontend bash -lc 'su - oneadmin -c "onevm list"'
 open http://localhost:2616   # oneadmin / opennebula
 ```
 
-## Boot a VM with SSH (NAT)
-
-For guests you can SSH into (not just VNC console), use the NAT network + an image with cloud-init.
+### Boot the seeded Ubuntu VM
 
 ```bash
-# .env
-SEED_NETWORK=nat
-SETUP_NAT=true
-
-docker compose up -d
-```
-
-Import a cloud image (sources must live under `/var/tmp` — datastore `RESTRICTED_DIRS=/`):
-
-```bash
-docker exec one-lab-frontend bash -lc '
-  curl -fL -o /var/tmp/ubuntu-cloud.img \
-    https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img
-  su - oneadmin -c "oneimage create /var/tmp/ubuntu.xml -d default"   # PATH=/var/tmp/ubuntu-cloud.img, TYPE=OS, FORMAT=qcow2
+docker exec -it one-lab-frontend bash -lc '
+  su - oneadmin -c "onetemplate instantiate ubuntu-cloud-ssh --name lab-vm-01"
 '
+# wait until RUNNING, then from the NODE (NAT IPs are not routed via FE):
+docker exec one-lab-frontend bash -lc 'su - oneadmin -c "onevm show lab-vm-01"' | grep ETH0_IP
+docker exec -it one-lab-node1 bash -lc 'ssh lab@10.10.10.x'
+# also works: ssh ubuntu@10.10.10.x
+# password for both users: lab
 ```
 
-Template with cloud-init (password + key) on `lab-nat`, instantiate, then from the **node** (VM IP is only routed there):
+`onevm ssh` hops FE → node → guest once keys/credentials are in place.
 
-```bash
-# get VM IP
-docker exec one-lab-frontend bash -lc 'su - oneadmin -c "onevm show <vm>"' | grep ETH0_IP
-# example: 10.10.10.2
-
-docker exec -it one-lab-node1 bash -lc 'ssh lab@10.10.10.2'
-# or with a key you injected via cloud-init USER_DATA / SSH_PUBLIC_KEY
-```
-
-`onevm ssh` hops FE → node → guest automatically once keys/credentials are in place.
-
-Networking choice is yours: dummy for pure lifecycle/one9s tests, NAT if you need IPs, or your own bridge/VLAN/VDC on the node.
+Networking choice is yours: NAT for real IPs + internet, dummy for pure lifecycle, or your own bridge/VLAN/VDC on the node.
 
 ### What the lab needs for real VMs
 
@@ -200,9 +188,13 @@ docker exec -it one-lab-frontend bash -lc \
 | `ONE_VERSION` | `7.4` | OpenNebula package series / image tag |
 | `ONEADMIN_PASSWORD` | `opennebula` | oneadmin password (XML-RPC + FireEdge) |
 | `REGISTER_HOSTS` | `node1` | Hosts to auto-register (space separated) |
-| `SEED_NETWORK` | `dummy` | `dummy` \| `nat` \| `none` |
-| `SEED_TINY_IMAGE` | `false` | Import a tiny Alpine cloud image on first boot (`/var/tmp`) |
-| `SETUP_NAT` | `false` | Create `br0` + MASQUERADE on nodes (use with `SEED_NETWORK=nat`) |
+| `SEED_NETWORK` | `nat` | `dummy` \| `nat` \| `none`. `nat` seeds **both** `lab-nat` + `lab-public` |
+| `SEED_UBUNTU_IMAGE` | `true` | Download Ubuntu cloudimg + create `ubuntu-cloud-ssh` template |
+| `UBUNTU_IMAGE_URL` | Ubuntu 24.04 cloudimg | Override image source |
+| `UBUNTU_TEMPLATE_NAME` | `ubuntu-cloud-ssh` | Default bootable template name |
+| `UBUNTU_VCPU` / `UBUNTU_MEMORY` | `1` / `1024` | Default template size |
+| `SEED_TINY_IMAGE` | `false` | Optional Alpine nocloud image (no SSH credentials) |
+| `SETUP_NAT` | `true` | Create `br0` + MASQUERADE on nodes (required for `SEED_NETWORK=nat`) |
 | `XMLRPC_PORT` / `FIREEDGE_PORT` | `2633` / `2616` | Host port mappings |
 | `SSH_PORT` | `2222` | Front-end SSH (lab convenience) |
 | `VNC_PORT_RANGE` | `5900-5915` | Published VNC consoles on the node |
@@ -221,7 +213,9 @@ docker compose pull    # refresh images from GHCR
 docker compose up -d   # start
 docker compose down    # stop (keep volumes)
 make logs              # follow logs
-make smoke             # XML-RPC + onehost + onevm checks
+make smoke             # XML-RPC + host + daemon checks
+make doctor            # KVM, bridges, gate/flow, seed inventory
+make seed-info         # vnets / images / templates created by seed
 make fe-shell          # shell in front-end
 make node-shell        # shell in node
 make reset             # wipe volumes (fresh lab)
@@ -234,12 +228,51 @@ Multi-node:
 REGISTER_HOSTS="node1 node2" docker compose --profile multi up -d
 ```
 
-NAT networking (VMs with IPs):
+## Learn and break it (by design)
+
+This lab is a **base**. Use it to understand OpenNebula, then break it on purpose.
+
+### First experiments
+
+| Try | Command / action | What you learn |
+|-----|------------------|----------------|
+| Inventory | `make seed-info` / `onehost list` | What the cluster owns |
+| Boot a VM | `onetemplate instantiate ubuntu-cloud-ssh` | Prolog, context, cloud-init |
+| SSH guest | from `node1`: `ssh lab@10.10.10.x` | NAT path, guest networking |
+| Console | VNC `localhost:5900+display` (desktop client) | Graphics, PASSWD from `onevm show` |
+| Users | `oneuser create labuser --password lab` | Multi-tenant basics |
+| ACL | `oneacl add` / delete and retry as labuser | Permissions model |
+| VDC | `onevdc create lab-vdc` + `onecluster addvdc` | Isolation boundaries |
+| Extra node | `REGISTER_HOSTS="node1 node2" docker compose --profile multi up -d` | Scheduling across hosts |
+| Services | define a oneflow service template | Multi-VM orchestration |
+
+### Break it on purpose
+
+| Break | How | Observe |
+|-------|-----|---------|
+| Kill host IM | `docker exec one-lab-node1 pkill libvirtd` | host → `ERR`/`init`, supervisor recovery |
+| Bad bridge | create vnet with bridge `no-such-br` + instantiate | prolog failure, oned.log |
+| Wrong datastore path | import image from `/tmp` | `RESTRICTED_DIRS` rejection |
+| ACL lockout | revoke own permissions | how OpenNebula fails closed |
+| Wipe and rebuild | `make reset && docker compose up -d` | full lifecycle in minutes |
+
+### Extend it (when you want more)
+
+| Goal | Hints |
+|------|-------|
+| VDC / multi-cluster | `onevdc`, `onecluster`, attach hosts/vnets/datastores |
+| OneKS / K8s | install `opennebula-ks` on FE yourself; need RAM + Marketplace + OneGate (already running) |
+| Extra bridges/VLAN | add links on the node, then vnets with your `VN_MAD`/bridge |
+| MySQL instead of SQLite | out of scope for this lab by design |
+| Web VNC / noVNC | deliberately not shipped |
+
+Diagnostics when something breaks:
 
 ```bash
-# .env
-SEED_NETWORK=nat
-SETUP_NAT=true
+make doctor
+docker logs one-lab-frontend --tail 100
+docker exec one-lab-frontend bash -lc 'su - oneadmin -c "onehost show 0; tail -50 /var/log/one/oned.log"'
+docker exec one-lab-node1 bash -lc 'virsh -r -c qemu:///system list --all; ip -br a'
 ```
 
 ## Build images yourself (optional)
