@@ -281,11 +281,23 @@ make logs              # follow logs
 make smoke             # XML-RPC + host + daemon checks
 make doctor            # KVM, bridges, gate/flow/guacd, seed inventory
 make seed-info         # vnets / images / templates created by seed
+make boot              # instantiate ubuntu-cloud-ssh → VM_NAME (default lab-vm-01)
+make vm-ip             # print guest IP
+make ssh-vm            # onevm ssh into VM_NAME
 make fe-shell          # shell in front-end
 make node-shell        # shell in node
 make reset             # wipe volumes (fresh lab)
 make build             # build images locally (instead of pull)
 make help              # list targets
+```
+
+Examples:
+
+```bash
+make boot                          # same as instantiate ubuntu-cloud-ssh --name lab-vm-01
+make boot VM_NAME=demo-01          # custom name
+make vm-ip VM_NAME=demo-01
+make ssh-vm VM_NAME=demo-01
 ```
 
 ## Learn and break it (by design)

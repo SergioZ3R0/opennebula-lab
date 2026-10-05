@@ -5,8 +5,9 @@ COMPOSE ?= docker compose
 ONE_VERSION ?= 7.4
 XMLRPC_PORT ?= 2633
 FIREEDGE_PORT ?= 2616
+VM_NAME ?= lab-vm-01
 
-.PHONY: help build up down reset logs smoke doctor fe-shell node-shell pull seed-info
+.PHONY: help build up down reset logs smoke doctor fe-shell node-shell pull seed-info boot vm-ip ssh-vm
 
 help:
 	@echo "one-lab targets:"
@@ -16,8 +17,11 @@ help:
 	@echo "  make reset     - down + delete volumes (full wipe)"
 	@echo "  make logs      - tail all logs"
 	@echo "  make smoke     - basic health checks (XML-RPC, host, daemons)"
-	@echo "  make doctor    - deeper diagnostics (KVM, bridges, gate/flow, seed)"
+	@echo "  make doctor    - deeper diagnostics (KVM, bridges, gate/flow/guacd)"
 	@echo "  make seed-info - show what the seed created"
+	@echo "  make boot      - instantiate seeded template (VM_NAME=$(VM_NAME))"
+	@echo "  make vm-ip     - print VM IP (VM_NAME=$(VM_NAME))"
+	@echo "  make ssh-vm    - onevm ssh into VM (VM_NAME=$(VM_NAME))"
 	@echo "  make fe-shell / node-shell"
 
 build:
@@ -78,6 +82,20 @@ doctor:
 
 seed-info:
 	@docker exec one-lab-frontend bash -lc 'su - oneadmin -c "onevnet list; echo; oneimage list; echo; onetemplate list; echo; onedatastore list"'
+
+# Instantiate the factory template (override: make boot VM_NAME=myvm)
+boot:
+	@docker exec one-lab-frontend bash -lc 'su - oneadmin -c "onetemplate instantiate $(or $(TEMPLATE_NAME),ubuntu-cloud-ssh) --name $(VM_NAME)"'
+
+# Print guest IP (NAT guests are reached from the node)
+vm-ip:
+	@docker exec one-lab-frontend bash -lc 'su - oneadmin -c "onevm show $(VM_NAME) -x"' | grep -oP '(?<=<ETH0_IP><!\[CDATA\[)[^\]]+' | head -1
+
+# onevm ssh by VM name (ProxyJump on FE; lab/ubuntu password lab)
+ssh-vm:
+	@id=$$(docker exec one-lab-frontend bash -lc 'su - oneadmin -c "onevm list --numeric --no-header --csv"' | awk -F, -v n="$(VM_NAME)" '$$4==n {print $$1; exit}'); \
+	if [ -z "$$id" ]; then echo "VM $(VM_NAME) not found (try: make boot)"; exit 1; fi; \
+	docker exec one-lab-frontend bash -lc "su - oneadmin -c \"onevm ssh $$id lab\""
 
 fe-shell:
 	docker exec -it one-lab-frontend bash
