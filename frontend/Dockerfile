@@ -53,6 +53,7 @@ RUN apt-get update \
         opennebula \
         opennebula-fireedge \
         opennebula-gate \
+        opennebula-guacd \
     && (apt-get install -y --no-install-recommends opennebula-flow \
         || apt-get install -y --no-install-recommends opennebula-oneflow \
         || true) \

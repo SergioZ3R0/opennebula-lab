@@ -163,6 +163,42 @@ else
 fi
 sleep 2
 
+# --- guacd (FireEdge Guacamole proxy: browser VNC/SSH/RDP consoles) ----------
+# Official path is FireEdge + guacd; without it console features are dead.
+# Package env: /etc/one/guacd -> OPTS="-b 0.0.0.0"
+# Binary: /usr/share/one/guacd/sbin/guacd  (needs LD_LIBRARY_PATH)
+log "Starting guacd"
+GUACD_BIN="/usr/share/one/guacd/sbin/guacd"
+GUACD_LIB="/usr/share/one/guacd/lib"
+GUACD_OPTS="-b 0.0.0.0"
+if [ -f /etc/one/guacd ]; then
+  # shellcheck disable=SC1091
+  OPTS=""
+  # shellcheck source=/dev/null
+  . /etc/one/guacd || true
+  if [ -n "${OPTS:-}" ]; then
+    GUACD_OPTS="${OPTS}"
+  fi
+fi
+if [ -x "${GUACD_BIN}" ]; then
+  su -s /bin/bash oneadmin -c \
+    "HOME=/var/lib/one LD_LIBRARY_PATH=${GUACD_LIB} nohup ${GUACD_BIN} -f ${GUACD_OPTS} >>/var/log/one/guacd.log 2>&1 &" \
+    || log "WARN: guacd start failed"
+  for i in $(seq 1 15); do
+    if ss -tln 2>/dev/null | grep -q ':4822'; then
+      log "guacd is up on :4822"
+      break
+    fi
+    sleep 1
+  done
+  ss -tln 2>/dev/null | grep -q ':4822' || {
+    log "WARN: guacd not listening on :4822"
+    tail -n 20 /var/log/one/guacd.log 2>/dev/null || true
+  }
+else
+  log "WARN: guacd binary not found (${GUACD_BIN})"
+fi
+
 # --- FireEdge ----------------------------------------------------------------
 log "Starting FireEdge"
 # sunstone_auth is created by oned; fireedge-server is the official launcher
@@ -284,6 +320,11 @@ while true; do
     log "onegate died, restarting"
     su -s /bin/bash oneadmin -c \
       "nohup ruby /usr/lib/one/onegate/onegate-server.rb >>/var/log/one/onegate.log 2>&1 &" || true
+  fi
+  if ! pgrep -f guacd >/dev/null 2>&1; then
+    log "guacd died, restarting"
+    su -s /bin/bash oneadmin -c \
+      "HOME=/var/lib/one LD_LIBRARY_PATH=/usr/share/one/guacd/lib nohup /usr/share/one/guacd/sbin/guacd -f -b 0.0.0.0 >>/var/log/one/guacd.log 2>&1 &" || true
   fi
   # retry host registration / recovery if any REGISTER_HOSTS are missing or not ON
   for host in ${REGISTER_HOSTS}; do

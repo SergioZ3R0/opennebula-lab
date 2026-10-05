@@ -12,7 +12,7 @@ Built to fill a real gap: OpenNebula does not publish official container images 
 
 | Component | Ports | Notes |
 |-----------|-------|-------|
-| Front-end `opennebula` | `2633` XML-RPC, `2616` FireEdge, `22` SSH | oned, onegate `:5030`, oneflow `:2474`, CLI |
+| Front-end `opennebula` | `2633` XML-RPC, `2616` FireEdge, `22` SSH | oned, onegate `:5030`, oneflow `:2474`, guacd `:4822`, CLI |
 | Node `node1` | `5900-5915` VM VNC | libvirt + qemu/KVM, auto-registered host |
 
 Default seed (`.env.example`):
@@ -54,7 +54,7 @@ Node also has `virsh` for KVM/libvirt inspection.
 |-------|--------|
 | Host `node1` | ON / MONITORED (CPU, memory, KVM) |
 | XML-RPC + FireEdge | up |
-| onegate / oneflow | up (`:5030` / `:2474`) |
+| onegate / oneflow / guacd | up (`:5030` / `:2474` / `:4822`) |
 | VM boot | Ubuntu 24.04 cloud + cloud-init (`ubuntu`/`lab` or `lab`/`lab`) |
 | SSH into guest | `lab@10.10.10.2` or `ubuntu@10.10.10.x` (NAT) from `node1` or `onevm ssh` |
 | one9s | connects with `ONE_AUTH` / `ONE_XMLRPC` |
@@ -162,9 +162,25 @@ docker run -d --name one-lab-frontend --hostname opennebula \
 
 ## Access a VM console (VNC)
 
-VMs expose a VNC display on the **node** (`5900 + display`). Compose publishes `5900-5915` on the host.
+### Option A: FireEdge + Guacamole (recommended)
 
-**Browsers do not open `vnc://` URLs.** This lab does **not** ship a web VNC client — you need a desktop VNC viewer.
+The front-end runs **guacd** (Apache Guacamole), the official OpenNebula console proxy. Open **FireEdge** → VMs → select the VM → **Console**. VNC (and SSH/RDP when available) work in the browser without a desktop VNC client.
+
+```bash
+open http://localhost:2616   # oneadmin / opennebula
+```
+
+Notes:
+
+- guacd lives on the FE and reaches VM VNC on the node over the compose network (`node1:5900+`).
+- Browser **SSH** through Guacamole still needs a network path from FE to the guest IP. NAT guests (`10.10.10.x`) are only routed on the node, so use CLI `onevm ssh` (ProxyJump) or SSH from `node1` for those.
+- VNC password for the seeded template is `lab` (also shown in `onevm show`).
+
+### Option B: desktop VNC client
+
+VMs also expose a raw VNC display on the **node** (`5900 + display`). Compose publishes `5900-5915` on the host.
+
+**Browsers do not open `vnc://` URLs** as a desktop client; use FireEdge (option A) or a VNC viewer.
 
 ```bash
 docker exec one-lab-frontend bash -lc 'su - oneadmin -c "onevm show <vm>"' | grep -E 'PORT|PASSWD'
@@ -263,8 +279,8 @@ This lab is a **base**. Use it to understand OpenNebula, then break it on purpos
 | VDC / multi-cluster | `onevdc`, `onecluster`, attach hosts/vnets/datastores |
 | OneKS / K8s | install `opennebula-ks` on FE yourself; need RAM + Marketplace + OneGate (already running) |
 | Extra bridges/VLAN | add links on the node, then vnets with your `VN_MAD`/bridge |
+| Browser console | FireEdge uses guacd `:4822` (VNC via node). SSH-in-browser still needs a path to guest IPs |
 | MySQL instead of SQLite | out of scope for this lab by design |
-| Web VNC / noVNC | deliberately not shipped |
 
 Diagnostics when something breaks:
 
@@ -289,7 +305,8 @@ make build
 docker compose
 ├── opennebula (frontend)          debian:13-slim + OpenNebula 7.4 CE
 │   ├── oned :2633                 XML-RPC (one9s, GOCA, CLI)
-│   ├── onegate / oneflow
+│   ├── onegate :5030 / oneflow :2474
+│   ├── guacd :4822                FireEdge Guacamole (browser VNC)
 │   ├── FireEdge :2616             modern web UI
 │   └── sshd :22                   node pulls qcow2 disks from FE
 │       └── SSH as oneadmin ─────────────────────┐

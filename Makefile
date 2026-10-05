@@ -54,6 +54,7 @@ smoke:
 	@docker exec one-lab-frontend bash -lc 'pgrep -x oned >/dev/null && echo "oned: OK" || echo "oned: MISSING"'
 	@docker exec one-lab-frontend bash -lc 'pgrep -f oneflow-server >/dev/null && echo "oneflow: OK" || echo "oneflow: MISSING"'
 	@docker exec one-lab-frontend bash -lc 'pgrep -f onegate-server >/dev/null && echo "onegate: OK" || echo "onegate: MISSING"'
+	@docker exec one-lab-frontend bash -lc 'pgrep -f guacd >/dev/null && echo "guacd: OK" || echo "guacd: MISSING"'
 
 doctor:
 	@echo "== containers =="
@@ -66,8 +67,8 @@ doctor:
 	@curl -sf -o /dev/null -w 'HTTP %{http_code}\n' http://localhost:2616/ || echo "FireEdge: FAIL"
 	@echo "== OpenNebula resources =="
 	@docker exec one-lab-frontend bash -lc 'su - oneadmin -c "onehost list; echo; onevnet list; echo; oneimage list; echo; onetemplate list; echo; onevm list"'
-	@echo "== onegate / oneflow =="
-	@docker exec one-lab-frontend bash -lc 'ss -tln | grep -E ":5030|:2474" || echo "gate/flow ports not listening"'
+	@echo "== onegate / oneflow / guacd =="
+	@docker exec one-lab-frontend bash -lc 'ss -tln | grep -E ":5030|:2474|:4822" || echo "gate/flow/guacd ports not listening"'
 	@echo "== node bridges / libvirt =="
 	@docker exec one-lab-node1 bash -lc 'ip -br link | grep -E "onebr|br0" || echo "lab bridges missing"; virsh -r -c qemu:///system list --all --name 2>/dev/null | grep -v "^$$" || echo "(no libvirt domains)"'
 	@echo "== logs (last errors) =="
