@@ -3,6 +3,8 @@ export
 
 COMPOSE ?= docker compose
 ONE_VERSION ?= 7.4
+XMLRPC_PORT ?= 2633
+FIREEDGE_PORT ?= 2616
 
 .PHONY: help build up down reset logs smoke doctor fe-shell node-shell pull seed-info
 
@@ -38,7 +40,7 @@ pull:
 
 # OpenNebula 7.x XML-RPC: one.system.version + session user:pass
 define RPC_CHECK
-curl -sf -X POST http://localhost:2633/RPC2 \
+curl -sf -X POST http://localhost:$(XMLRPC_PORT)/RPC2 \
   -d '<?xml version="1.0"?><methodCall><methodName>one.system.version</methodName><params><param><value><string>oneadmin:$(ONEADMIN_PASSWORD)</string></value></param></params></methodCall>' \
   | grep -q '<boolean>1</boolean>'
 endef
@@ -64,7 +66,7 @@ doctor:
 	@echo "== XML-RPC =="
 	@$(RPC_CHECK) && echo "XML-RPC: OK" || echo "XML-RPC: FAIL"
 	@echo "== FireEdge =="
-	@curl -sf -o /dev/null -w 'HTTP %{http_code}\n' http://localhost:2616/ || echo "FireEdge: FAIL"
+	@curl -sf -o /dev/null -w 'HTTP %{http_code}\n' http://localhost:$(FIREEDGE_PORT)/ || echo "FireEdge: FAIL"
 	@echo "== OpenNebula resources =="
 	@docker exec one-lab-frontend bash -lc 'su - oneadmin -c "onehost list; echo; onevnet list; echo; oneimage list; echo; onetemplate list; echo; onevm list"'
 	@echo "== onegate / oneflow / guacd =="
