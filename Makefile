@@ -59,7 +59,12 @@ endef
 
 smoke:
 	@echo "== XML-RPC (one.system.version) =="
-	@$(RPC_CHECK) && echo OK || (echo "XML-RPC FAIL"; exit 1)
+	@ok=0; \
+	for i in 1 2 3 4 5 6 7 8 9 10 11 12; do \
+	  if $(RPC_CHECK); then ok=1; echo "OK (try $$i)"; break; fi; \
+	  echo "waiting for oned ($$i/12)..."; sleep 5; \
+	done; \
+	if [ $$ok -ne 1 ]; then echo "XML-RPC FAIL (is the lab up? make up; wait for Lab front-end ready)"; exit 1; fi
 	@echo "== onehost =="
 	@docker exec one-lab-frontend bash -lc 'su - oneadmin -c "onehost list"'
 	@echo "== onevm =="
