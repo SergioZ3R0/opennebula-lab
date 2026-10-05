@@ -89,24 +89,29 @@ open http://localhost:2616   # oneadmin / opennebula
 
 ### one9s (optional TUI)
 
-Prefer the **encrypted vault** over exporting credentials every time:
+Companion project: [one9s](https://github.com/SergioZ3R0/one9s). Prefer the **encrypted vault** over exporting credentials every time.
 
 ```bash
-# one-time setup against this lab
+# one-time setup (interactive)
 one9s vault init
-#   endpoint: http://localhost:2633/RPC2
-#   auth:     oneadmin:opennebula   (or your ONEADMIN_PASSWORD)
+#   Vault password:        <pick one>          # AES-256-GCM, stored in ~/.one9s/config.vault
+#   Confirm password:      <same>
+#   OpenNebula user:       oneadmin
+#   OpenNebula password:   opennebula          # or ONEADMIN_PASSWORD from .env
+#   XML-RPC endpoint:      http://localhost:2633/RPC2   # Enter accepts this default
 
-one9s            # prompts for the vault password
+one9s
+# prompts for the vault password
+# optional: ONE_VAULT_PASS=... one9s   # skip the prompt
 ```
 
-One-liner without vault (no password prompt, credentials in the shell):
+Other vault commands: `vault encrypt` · `vault decrypt` · `vault edit` (rotate password / change endpoint).
+
+One-liner without vault (bypasses vault entirely; fine for scripts, not daily use):
 
 ```bash
 ONE_AUTH="oneadmin:opennebula" ONE_XMLRPC="http://localhost:2633/RPC2" one9s
 ```
-
-See [one9s](https://github.com/SergioZ3R0/one9s) for `vault encrypt` / `edit` / `ONE_VAULT_PASS`.
 
 ### Boot the seeded Ubuntu VM
 
@@ -400,15 +405,37 @@ Shared volume `one-ssh` holds the `oneadmin` keypair: the front-end generates it
 
 ## Using it with one9s
 
+Companion TUI: [one9s](https://github.com/SergioZ3R0/one9s). It talks XML-RPC only; no SSH into guests required.
+
+**Recommended: encrypted vault** (no `export` in your shell; credentials live in `~/.one9s/config.vault`):
+
 ```bash
-export ONE_AUTH="oneadmin:opennebula"
-export ONE_XMLRPC="http://localhost:2633/RPC2"
-./one9s
+one9s vault init
+#   Vault password / Confirm   -> your vault secret (AES-256-GCM)
+#   OpenNebula user            -> oneadmin
+#   OpenNebula password        -> opennebula  (or ONEADMIN_PASSWORD from .env)
+#   XML-RPC endpoint           -> http://localhost:2633/RPC2  (default, just press Enter)
+
+one9s                          # prompts for the vault password
+# optional: ONE_VAULT_PASS=... one9s
+```
+
+| Command | Purpose |
+|---------|---------|
+| `one9s vault init` | Create encrypted config |
+| `one9s vault encrypt` | Encrypt an existing plain `~/.one9s/config` |
+| `one9s vault decrypt` | Show vault contents |
+| `one9s vault edit` | Decrypt → `$EDITOR` → re-encrypt (password / endpoint change) |
+
+**Alternative:** one-shot env vars (vault is skipped when `ONE_AUTH` + `ONE_XMLRPC` are set):
+
+```bash
+ONE_AUTH="oneadmin:opennebula" ONE_XMLRPC="http://localhost:2633/RPC2" one9s
 ```
 
 If you changed `ONEADMIN_PASSWORD` in `.env`, use that instead of `opennebula`.
 
-Real host state, VM lifecycle, datastores, ACLs and quotas — enough to reproduce issues safely. one9s talks to XML-RPC only; it does not need SSH into guests.
+Real host state, VM lifecycle, datastores, ACLs and quotas — enough to reproduce issues safely.
 
 ## How images are published
 
