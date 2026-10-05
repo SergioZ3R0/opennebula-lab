@@ -161,6 +161,11 @@ create_ubuntu_template() {
     log "WARN: skip template, image ${UBUNTU_IMAGE_NAME} missing"
     return 1
   fi
+  # Inject the shared oneadmin pubkey so onevm ssh works via ProxyJump without passwords
+  local fe_pubkey=""
+  if [ -s /var/lib/one/.ssh/id_rsa.pub ]; then
+    fe_pubkey="$(tr -d '\n' </var/lib/one/.ssh/id_rsa.pub)"
+  fi
   log "Creating template ${UBUNTU_TEMPLATE_NAME} on ${template_vnet} (cloud-init users: lab/ubuntu password lab)"
   cat > /tmp/one-template-ubuntu.xml <<EOF
 <TEMPLATE>
@@ -179,6 +184,8 @@ create_ubuntu_template() {
   </GRAPHICS>
   <CONTEXT>
     <NETWORK>YES</NETWORK>
+    <USERNAME>lab</USERNAME>
+    <SSH_PUBLIC_KEY>${fe_pubkey}</SSH_PUBLIC_KEY>
     <USER_DATA>#cloud-config
 users:
   - default
@@ -187,12 +194,16 @@ users:
     shell: /bin/bash
     sudo: ALL=(ALL) NOPASSWD:ALL
     lock_passwd: false
+    ssh_authorized_keys:
+      - ${fe_pubkey}
 chpasswd:
   list: |
     lab:lab
     ubuntu:lab
   expire: false
 ssh_pwauth: true
+ssh_authorized_keys:
+  - ${fe_pubkey}
 </USER_DATA>
   </CONTEXT>
   <DISK>

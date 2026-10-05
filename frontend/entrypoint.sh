@@ -51,6 +51,8 @@ chown -R oneadmin:oneadmin "${ONE_SSH}"
 
 # OpenNebula ships a friendly ssh_config for oneadmin
 # Lab containers regenerate host keys on recreate — be permissive
+# NAT/dummy guest IPs live on the KVM node bridges, not on the FE network:
+# onevm ssh and guest access must ProxyJump via the compute node.
 cat > "${ONE_SSH}/config" <<EOF
 Host *
   IdentityFile ${ONE_SSH}/id_rsa
@@ -60,6 +62,10 @@ Host *
   ControlMaster auto
   ControlPath ${ONE_SSH}/cm-%r@%h:%p
   ControlPersist 5m
+
+# lab guest subnets (br0 NAT + dummy public) are only routed on the node
+Host 10.10.10.* 192.168.100.*
+  ProxyJump oneadmin@node1
 EOF
 chown oneadmin:oneadmin "${ONE_SSH}/config"
 chmod 600 "${ONE_SSH}/config"

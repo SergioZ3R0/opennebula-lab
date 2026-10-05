@@ -98,7 +98,7 @@ docker exec -it one-lab-node1 bash -lc 'ssh lab@10.10.10.x'
 # password for both users: lab
 ```
 
-`onevm ssh` hops FE → node → guest once keys/credentials are in place.
+`onevm ssh` hops FE → node → guest automatically (ssh_config ProxyJump via `node1` for lab subnets). Seed cloud-init installs the shared oneadmin pubkey on `lab` and `ubuntu`.
 
 Networking choice is yours: NAT for real IPs + internet, dummy for pure lifecycle, or your own bridge/VLAN/VDC on the node.
 
