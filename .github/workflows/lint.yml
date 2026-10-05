@@ -1,0 +1,62 @@
+name: lint
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: lint-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install shellcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
+      - name: Run shellcheck
+        run: |
+          shellcheck --version
+          shellcheck -x -S warning -e SC1090,SC1091 \
+            frontend/entrypoint.sh \
+            frontend/seed.sh \
+            node/entrypoint.sh
+          echo "shellcheck OK"
+
+  yamllint:
+    name: yamllint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install yamllint
+        run: pipx install yamllint
+
+      - name: Lint YAML (compose + workflows)
+        run: |
+          yamllint -c .yamllint.yml \
+            docker-compose.yml \
+            .github/workflows/*.yml
+
+  compose-config:
+    name: docker compose config
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Validate compose file
+        run: |
+          cp .env.example .env
+          docker compose config --quiet
+          echo "compose config OK"

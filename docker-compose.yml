@@ -40,9 +40,16 @@ services:
     environment:
       ONEADMIN_PASSWORD: ${ONEADMIN_PASSWORD:-opennebula}
       REGISTER_HOSTS: ${REGISTER_HOSTS:-node1}
-      SEED_NETWORK: ${SEED_NETWORK:-dummy}
+      SEED_NETWORK: ${SEED_NETWORK:-nat}
+      SEED_UBUNTU_IMAGE: ${SEED_UBUNTU_IMAGE:-true}
+      UBUNTU_IMAGE_URL: ${UBUNTU_IMAGE_URL:-}
+      UBUNTU_IMAGE_NAME: ${UBUNTU_IMAGE_NAME:-}
+      UBUNTU_TEMPLATE_NAME: ${UBUNTU_TEMPLATE_NAME:-}
+      UBUNTU_VCPU: ${UBUNTU_VCPU:-}
+      UBUNTU_MEMORY: ${UBUNTU_MEMORY:-}
       SEED_TINY_IMAGE: ${SEED_TINY_IMAGE:-false}
       TINY_IMAGE_URL: ${TINY_IMAGE_URL:-}
+      TINY_IMAGE_NAME: ${TINY_IMAGE_NAME:-}
       ONE_VERSION: ${ONE_VERSION:-7.4}
     volumes:
       - one-data:/var/lib/one
@@ -59,7 +66,8 @@ services:
     container_name: one-lab-node1
     hostname: node1
     environment:
-      SETUP_NAT: ${SETUP_NAT:-false}
+      # default true matches SEED_NETWORK=nat in .env.example
+      SETUP_NAT: ${SETUP_NAT:-true}
       ONE_VERSION: ${ONE_VERSION:-7.4}
     # VM VNC consoles live on the node (5900 + display). Publish the range
     # so you can open a VM console from the host with any VNC client.
@@ -74,7 +82,7 @@ services:
     hostname: node2
     profiles: ["multi"]
     environment:
-      SETUP_NAT: ${SETUP_NAT:-false}
+      SETUP_NAT: ${SETUP_NAT:-true}
       ONE_VERSION: ${ONE_VERSION:-7.4}
     restart: unless-stopped
 

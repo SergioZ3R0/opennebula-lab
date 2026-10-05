@@ -53,6 +53,7 @@ RUN apt-get update \
         opennebula \
         opennebula-fireedge \
         opennebula-gate \
+        opennebula-guacd \
     && (apt-get install -y --no-install-recommends opennebula-flow \
         || apt-get install -y --no-install-recommends opennebula-oneflow \
         || true) \
@@ -75,8 +76,10 @@ RUN chmod +x /entrypoint.sh /seed.sh \
 # front-end via ssh (local datastore is not shared).
 EXPOSE 2633 2616 22
 
-HEALTHCHECK --interval=15s --timeout=5s --start-period=90s --retries=10 \
-    CMD curl -sf -o /dev/null -X POST http://127.0.0.1:2633/RPC2 -d '<methodCall><methodName>system.version</methodName></methodCall>' \
-        || exit 1
+# oned must be running and answering XML-RPC. Process+port is password-agnostic;
+# make smoke/doctor do a real one.system.version call with credentials.
+# /dev/tcp is bash-only; HEALTHCHECK runs under /bin/sh, so use ss + pgrep.
+HEALTHCHECK --interval=15s --timeout=5s --start-period=120s --retries=10 \
+    CMD pgrep -x oned >/dev/null && ss -tln | grep -q ':2633' && exit 0 || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/entrypoint.sh"]

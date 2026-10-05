@@ -1,0 +1,17 @@
+---
+# Lint config for compose + GitHub Actions (not shell, not .env)
+extends: relaxed
+
+rules:
+  line-length: disable
+  document-start: disable
+  empty-lines:
+    max: 1
+  comments:
+    min-spaces-from-content: 1
+  truthy:
+    allowed-values: ["true", "false", "on"]
+  braces:
+    max-spaces-inside: 1
+  brackets:
+    max-spaces-inside: 0
