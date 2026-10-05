@@ -278,12 +278,8 @@ docker compose pull    # refresh images from GHCR
 docker compose up -d   # start
 docker compose down    # stop (keep volumes)
 make logs              # follow logs
-make smoke             # XML-RPC + host + daemon checks
-make doctor            # KVM, bridges, gate/flow/guacd, seed inventory
-make seed-info         # vnets / images / templates created by seed
-make boot              # instantiate ubuntu-cloud-ssh → VM_NAME (default lab-vm-01)
-make vm-ip             # print guest IP
-make ssh-vm            # onevm ssh into VM_NAME
+make smoke             # lab health (XML-RPC + host + daemons)
+make doctor            # lab diagnostics (KVM, bridges, daemons)
 make fe-shell          # shell in front-end
 make node-shell        # shell in node
 make reset             # wipe volumes (fresh lab)
@@ -291,13 +287,16 @@ make build             # build images locally (instead of pull)
 make help              # list targets
 ```
 
-Examples:
+Day-to-day OpenNebula work happens **inside the front-end CLI** (`make fe-shell`, then `su - oneadmin`). This lab intentionally does **not** wrap `onevm` / `onetemplate` in Make targets so you learn the real tools.
 
 ```bash
-make boot                          # same as instantiate ubuntu-cloud-ssh --name lab-vm-01
-make boot VM_NAME=demo-01          # custom name
-make vm-ip VM_NAME=demo-01
-make ssh-vm VM_NAME=demo-01
+su - oneadmin
+onehost list
+onevnet list
+onetemplate list
+onetemplate instantiate ubuntu-cloud-ssh --name lab-vm-01
+onevm show lab-vm-01
+onevm ssh lab-vm-01 lab
 ```
 
 ## Learn and break it (by design)
@@ -308,10 +307,10 @@ This lab is a **base**. Use it to understand OpenNebula, then break it on purpos
 
 | Try | Command / action | What you learn |
 |-----|------------------|----------------|
-| Inventory | `make seed-info` / `onehost list` | What the cluster owns |
-| Boot a VM | `onetemplate instantiate ubuntu-cloud-ssh` | Prolog, context, cloud-init |
+| Inventory | `onehost list` / `onevnet list` / `oneimage list` / `onetemplate list` | CLI + resource model |
+| Boot a VM | `onetemplate instantiate ubuntu-cloud-ssh --name lab-vm-01` | Templates, prolog, context |
 | Console | FireEdge → VM → Console (VNC in browser) | guacd path, graphics |
-| SSH guest | from `node1`: `ssh lab@10.10.10.x` or `onevm ssh 0 lab` | NAT path, ProxyJump |
+| SSH guest | `onevm show lab-vm-01` then from `node1`: `ssh lab@<IP>` | NAT path, reading context |
 | Users | `oneuser create labuser --password lab` | Multi-tenant basics |
 | ACL | `oneacl add` / delete and retry as labuser | Permissions model |
 | VDC | `onevdc create lab-vdc` + `onecluster addvdc` | Isolation boundaries |
@@ -339,7 +338,7 @@ This lab is a **base**. Use it to understand OpenNebula, then break it on purpos
 | Publish gate/flow on host | compose override mapping `5030`/`2474` (not in default lab) |
 | MySQL instead of SQLite | out of scope for this lab by design |
 
-Diagnostics when something breaks:
+Diagnostics when something breaks (lab plumbing; OpenNebula state via CLI):
 
 ```bash
 make doctor
