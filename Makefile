@@ -88,6 +88,8 @@ doctor:
 	@docker exec one-lab-frontend bash -lc 'su - oneadmin -c "onehost list; echo; onevnet list; echo; oneimage list; echo; onetemplate list; echo; onevm list"'
 	@echo "== onegate / oneflow / guacd =="
 	@docker exec one-lab-frontend bash -lc 'ss -tln | grep -E ":5030|:2474|:4822" || echo "gate/flow/guacd ports not listening"'
+	@echo "== OneKS (if enabled) =="
+	@docker exec one-lab-frontend bash -lc 'ss -tln | grep -q ":10780" && echo "oneks-server: OK (:10780)" || echo "oneks-server: not listening (INSTALL_ONEKS=false?)"'
 	@echo "== node bridges / libvirt =="
 	@docker exec one-lab-node1 bash -lc 'ip -br link | grep -E "onebr|br0" || echo "lab bridges missing"; virsh -r -c qemu:///system list --all --name 2>/dev/null | grep -v "^$$" || echo "(no libvirt domains)"'
 	@echo "== logs (last errors) =="

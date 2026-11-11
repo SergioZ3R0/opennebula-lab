@@ -5,6 +5,7 @@ log() { echo "[one-lab:seed] $*"; }
 
 SEED_NETWORK="${SEED_NETWORK:-nat}"
 SEED_UBUNTU_IMAGE="${SEED_UBUNTU_IMAGE:-true}"
+INSTALL_ONEKS="${INSTALL_ONEKS:-false}"
 UBUNTU_IMAGE_URL="${UBUNTU_IMAGE_URL:-https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img}"
 UBUNTU_IMAGE_NAME="${UBUNTU_IMAGE_NAME:-ubuntu-cloud}"
 UBUNTU_TEMPLATE_NAME="${UBUNTU_TEMPLATE_NAME:-ubuntu-cloud-ssh}"
@@ -112,6 +113,46 @@ ensure_ar() {
 }
 ensure_ar lab-public 192.168.100.2 200 192.168.100.1 255.255.255.0
 ensure_ar lab-nat 10.10.10.2 100 10.10.10.1 255.255.255.0
+
+# Private vnet for OneKS clusters (only when INSTALL_ONEKS=true)
+create_lab_k8s_priv() {
+  if onevnet show lab-k8s-priv >/dev/null 2>&1; then
+    log "Network lab-k8s-priv already exists"
+    return 0
+  fi
+  log "Creating private network 'lab-k8s-priv' (onebr.10) for OneKS"
+  cat > /tmp/one-vnet-k8s.xml <<'EOF'
+<NETWORK>
+  <NAME>lab-k8s-priv</NAME>
+  <DESCRIPTION>Private network for OneKS clusters (onebr.10)</DESCRIPTION>
+  <VN_MAD>bridge</VN_MAD>
+  <BRIDGE>onebr.10</BRIDGE>
+  <NETWORK_ADDRESS>10.20.20.0</NETWORK_ADDRESS>
+  <NETWORK_MASK>255.255.255.0</NETWORK_MASK>
+  <DNS>8.8.8.8</DNS>
+  <AR_POOL>
+    <AR>
+      <TYPE>IP4</TYPE>
+      <IP>10.20.20.2</IP>
+      <SIZE>200</SIZE>
+      <GATEWAY>10.20.20.1</GATEWAY>
+    </AR>
+  </AR_POOL>
+</NETWORK>
+EOF
+  onevnet create /tmp/one-vnet-k8s.xml || log "WARN: could not create lab-k8s-priv"
+  ensure_ar lab-k8s-priv 10.20.20.2 200 10.20.20.1 255.255.255.0
+}
+
+if [ "${INSTALL_ONEKS}" = "true" ]; then
+  # DNS for guest internet checks / OneKS bootstrap
+  if onevnet show lab-nat >/dev/null 2>&1 && ! onevnet show lab-nat --xml 2>/dev/null | grep -q '<DNS>'; then
+    onevnet update lab-nat --append <<'EOF' || true
+DNS=8.8.8.8
+EOF
+  fi
+  create_lab_k8s_priv
+fi
 
 # Pick network for the default bootable template: prefer NAT, fallback dummy.
 template_vnet="lab-public"

@@ -50,6 +50,7 @@ services:
       SEED_TINY_IMAGE: ${SEED_TINY_IMAGE:-false}
       TINY_IMAGE_URL: ${TINY_IMAGE_URL:-}
       TINY_IMAGE_NAME: ${TINY_IMAGE_NAME:-}
+      INSTALL_ONEKS: ${INSTALL_ONEKS:-false}
       ONE_VERSION: ${ONE_VERSION:-7.4}
     volumes:
       - one-data:/var/lib/one

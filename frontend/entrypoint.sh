@@ -8,6 +8,7 @@ REGISTER_HOSTS="${REGISTER_HOSTS:-node1}"
 SEED_NETWORK="${SEED_NETWORK:-nat}"          # dummy | nat | none
 SEED_UBUNTU_IMAGE="${SEED_UBUNTU_IMAGE:-true}"
 SEED_TINY_IMAGE="${SEED_TINY_IMAGE:-false}"
+INSTALL_ONEKS="${INSTALL_ONEKS:-false}"
 ONE_HOME="/var/lib/one"
 ONE_SSH="${ONE_HOME}/.ssh"
 ONE_AUTH_SESSION="oneadmin:${ONEADMIN_PASSWORD}"
@@ -115,6 +116,42 @@ if [ -f /etc/one/oned.conf ] && ! grep -q '^ONEGATE_ENDPOINT' /etc/one/oned.conf
   log "Enabled ONEGATE_ENDPOINT in oned.conf (OneKS / guest tokens)"
 fi
 
+# --- optional OneKS (opt-in: INSTALL_ONEKS=true) ------------------------------
+# Installs opennebula-ks, configures tproxy, starts oneks-server.
+# Does NOT create a K8s cluster; that is up to the user (oneks create cluster).
+if [ "${INSTALL_ONEKS}" = "true" ]; then
+  log "INSTALL_ONEKS=true: preparing OneKS"
+  if ! command -v oneks >/dev/null 2>&1; then
+    log "Installing opennebula-ks"
+    apt-get update -qq \
+      && apt-get install -y -qq opennebula-ks \
+      || log "WARN: opennebula-ks install failed"
+  fi
+  # Transparent proxy: guests reach OneGate / XML-RPC / OneKS via 169.254.16.9
+  ONE_VNM_CONF="/var/lib/one/remotes/etc/vnm/OpenNebulaNetwork.conf"
+  if [ -f "${ONE_VNM_CONF}" ] && ! grep -q '^:tproxy:' "${ONE_VNM_CONF}"; then
+    cat >> "${ONE_VNM_CONF}" <<'EOF'
+
+# OneKS / OneGate / XML-RPC transparent proxy (lab, INSTALL_ONEKS=true)
+# Guests use 169.254.16.9:<port>; the node proxies to the front-end.
+:tproxy:
+- :service_port: 5030
+  :remote_addr: opennebula
+  :remote_port: 5030
+- :service_port: 2633
+  :remote_addr: opennebula
+  :remote_port: 2633
+- :service_port: 10780
+  :remote_addr: opennebula
+  :remote_port: 10780
+EOF
+    chown oneadmin:oneadmin "${ONE_VNM_CONF}" 2>/dev/null || true
+    log "Configured tproxy in OpenNebulaNetwork.conf"
+  fi
+else
+  log "INSTALL_ONEKS=false (skip OneKS; set INSTALL_ONEKS=true to enable)"
+fi
+
 log "Starting oned"
 su -s /bin/bash oneadmin -c "oned start" >/tmp/oned.out 2>/tmp/oned.err || {
   log "oned start failed: $(tr '\n' ' ' </tmp/oned.err)"
@@ -169,6 +206,26 @@ else
   log "WARN: onegate-server.rb not found"
 fi
 sleep 2
+
+# oneks-server (only when INSTALL_ONEKS=true; package installed above)
+if [ "${INSTALL_ONEKS}" = "true" ]; then
+  log "Starting oneks-server"
+  if [ -f /usr/lib/one/oneks/oneks-server.rb ]; then
+    su -s /bin/bash oneadmin -c \
+      "nohup ruby /usr/lib/one/oneks/oneks-server.rb >>/var/log/one/oneks.log 2>&1 &" \
+      || log "WARN: oneks-server start failed"
+    for i in $(seq 1 20); do
+      if ss -tln 2>/dev/null | grep -q ':10780'; then
+        log "oneks-server is up on :10780"
+        break
+      fi
+      sleep 1
+    done
+    ss -tln 2>/dev/null | grep -q ':10780' || log "WARN: oneks-server not listening on :10780"
+  else
+    log "WARN: oneks-server.rb not found (opennebula-ks installed?)"
+  fi
+fi
 
 # --- guacd (FireEdge Guacamole proxy: browser VNC/SSH/RDP consoles) ----------
 # Official path is FireEdge + guacd; without it console features are dead.
@@ -284,10 +341,11 @@ for host in ${REGISTER_HOSTS}; do
 done
 
 # --- seed --------------------------------------------------------------------
-if [ "${SEED_NETWORK}" != "none" ] || [ "${SEED_UBUNTU_IMAGE}" = "true" ] || [ "${SEED_TINY_IMAGE}" = "true" ]; then
+if [ "${SEED_NETWORK}" != "none" ] || [ "${SEED_UBUNTU_IMAGE}" = "true" ] || [ "${SEED_TINY_IMAGE}" = "true" ] || [ "${INSTALL_ONEKS}" = "true" ]; then
   SEED_NETWORK="${SEED_NETWORK}" \
   SEED_UBUNTU_IMAGE="${SEED_UBUNTU_IMAGE}" \
   SEED_TINY_IMAGE="${SEED_TINY_IMAGE}" \
+  INSTALL_ONEKS="${INSTALL_ONEKS}" \
   UBUNTU_IMAGE_URL="${UBUNTU_IMAGE_URL:-}" \
   UBUNTU_IMAGE_NAME="${UBUNTU_IMAGE_NAME:-}" \
   UBUNTU_TEMPLATE_NAME="${UBUNTU_TEMPLATE_NAME:-}" \
@@ -333,6 +391,11 @@ while true; do
     log "guacd died, restarting"
     su -s /bin/bash oneadmin -c \
       "HOME=/var/lib/one LD_LIBRARY_PATH=/usr/share/one/guacd/lib nohup /usr/share/one/guacd/sbin/guacd -f -b 0.0.0.0 >>/var/log/one/guacd.log 2>&1 &" || true
+  fi
+  if [ "${INSTALL_ONEKS}" = "true" ] && ! ss -tln 2>/dev/null | grep -q ':10780'; then
+    log "oneks-server not listening, restarting"
+    su -s /bin/bash oneadmin -c \
+      "nohup ruby /usr/lib/one/oneks/oneks-server.rb >>/var/log/one/oneks.log 2>&1 &" || true
   fi
   # retry host registration / recovery if any REGISTER_HOSTS are missing or not ON
   for host in ${REGISTER_HOSTS}; do

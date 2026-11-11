@@ -259,6 +259,7 @@ Copy `.env.example` → `.env`. Compose and the Makefile read it.
 | `TINY_IMAGE_URL` | Alpine 3.20 nocloud qcow2 | Alpine image source |
 | `TINY_IMAGE_NAME` | `alpine-tiny` | Alpine image name |
 | `SETUP_NAT` | `true` | Create `br0` + MASQUERADE on **nodes** (required for `SEED_NETWORK=nat`) |
+| `INSTALL_ONEKS` | `false` | Install OneKS (`opennebula-ks` + oneks-server + tproxy + `lab-k8s-priv`). **Does not** pre-deploy a K8s cluster |
 | `XMLRPC_PORT` | `2633` | Host port → oned XML-RPC |
 | `FIREEDGE_PORT` | `2616` | Host port → FireEdge UI |
 | `SSH_PORT` | `2222` | Host port → FE sshd |
@@ -293,6 +294,32 @@ docker compose --profile multi up -d
 - `node2` is optional (profile `multi`).
 - Only `node1` publishes host VNC ports by default.
 - `onevm ssh` ProxyJump is written for `node1`; for guests on `node2` SSH from that node or extend ssh_config.
+
+### OneKS (optional Kubernetes)
+
+Enable with `.env`:
+
+```bash
+INSTALL_ONEKS=true
+docker compose up -d
+```
+
+That installs `opennebula-ks`, starts `oneks-server` (`:10780`), configures **tproxy** (guests reach OneGate/XML-RPC/OneKS via `169.254.16.9`), seeds private vnet `lab-k8s-priv` (`10.20.20.0/24`), and sets DNS on `lab-nat`.
+
+**No K8s cluster is created automatically.** When you want one:
+
+```bash
+docker exec -it one-lab-frontend bash -lc 'su - oneadmin'
+oneks check --opennebula-cluster 0 --public-network 1 --private-network 2
+oneks create cluster --wait
+# public=lab-nat (1), private=lab-k8s-priv (2), flavour=standalone (~4GB RAM)
+oneks show cluster <id> --kubeconfig > kubeconfig
+KUBECONFIG=./kubeconfig kubectl get nodes
+```
+
+Check with `make doctor` (ports `5030`/`10780`) or `oneks list clusters`.
+
+Default `INSTALL_ONEKS=false` keeps the image/lab simple for break-and-rebuild loops.
 
 ## Everyday commands
 
