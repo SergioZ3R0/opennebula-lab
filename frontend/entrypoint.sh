@@ -108,6 +108,13 @@ if command -v onedb >/dev/null 2>&1; then
 fi
 
 # --- start services (no systemd) --------------------------------------------
+# OneKS needs ONEGATE_ENDPOINT in oned.conf (guests reach OneGate via tproxy)
+if [ -f /etc/one/oned.conf ] && ! grep -q '^ONEGATE_ENDPOINT' /etc/one/oned.conf; then
+  sed -i 's|^#ONEGATE_ENDPOINT.*|ONEGATE_ENDPOINT = "http://169.254.16.9:5030"|' /etc/one/oned.conf \
+    || echo 'ONEGATE_ENDPOINT = "http://169.254.16.9:5030"' >> /etc/one/oned.conf
+  log "Enabled ONEGATE_ENDPOINT in oned.conf (OneKS / guest tokens)"
+fi
+
 log "Starting oned"
 su -s /bin/bash oneadmin -c "oned start" >/tmp/oned.out 2>/tmp/oned.err || {
   log "oned start failed: $(tr '\n' ' ' </tmp/oned.err)"

@@ -150,21 +150,31 @@ for br in onebr0 onebr.10 br0; do
 done
 
 # --- optional NAT bridge -----------------------------------------------------
+# The VNM driver may delete br0 when the last VM on it is cleaned up.
+# Re-apply gateway + MASQUERADE whenever SETUP_NAT=true (boot + supervisor).
+setup_nat_bridge() {
+  if [ "${SETUP_NAT}" != "true" ]; then
+    return 0
+  fi
+  if ! ip link show "${NAT_BRIDGE}" >/dev/null 2>&1; then
+    ip link add name "${NAT_BRIDGE}" type bridge || true
+  fi
+  ip addr replace "${NAT_SUBNET%/*}.1/24" dev "${NAT_BRIDGE}" 2>/dev/null \
+    || ip addr replace 10.10.10.1/24 dev "${NAT_BRIDGE}" 2>/dev/null \
+    || true
+  ip link set "${NAT_BRIDGE}" up || true
+  sysctl -w net.ipv4.ip_forward=1 >/dev/null || true
+  iptables -t nat -C POSTROUTING -s "${NAT_SUBNET}" ! -d "${NAT_SUBNET}" -j MASQUERADE 2>/dev/null \
+    || iptables -t nat -A POSTROUTING -s "${NAT_SUBNET}" ! -d "${NAT_SUBNET}" -j MASQUERADE || true
+  iptables -C FORWARD -i "${NAT_BRIDGE}" -j ACCEPT 2>/dev/null \
+    || iptables -A FORWARD -i "${NAT_BRIDGE}" -j ACCEPT || true
+  iptables -C FORWARD -o "${NAT_BRIDGE}" -j ACCEPT 2>/dev/null \
+    || iptables -A FORWARD -o "${NAT_BRIDGE}" -j ACCEPT || true
+}
+
 if [ "${SETUP_NAT}" = "true" ]; then
   log "Setting up NAT bridge ${NAT_BRIDGE} (${NAT_SUBNET})"
-  if ! ip link show "${NAT_BRIDGE}" >/dev/null 2>&1; then
-    ip link add name "${NAT_BRIDGE}" type bridge
-  fi
-  ip addr replace 10.10.10.1/24 dev "${NAT_BRIDGE}" 2>/dev/null \
-    || ip addr replace "${NAT_SUBNET%/*}.1/24" dev "${NAT_BRIDGE}"
-  ip link set "${NAT_BRIDGE}" up
-  sysctl -w net.ipv4.ip_forward=1 >/dev/null
-  iptables -t nat -C POSTROUTING -s "${NAT_SUBNET}" ! -d "${NAT_SUBNET}" -j MASQUERADE 2>/dev/null \
-    || iptables -t nat -A POSTROUTING -s "${NAT_SUBNET}" ! -d "${NAT_SUBNET}" -j MASQUERADE
-  iptables -C FORWARD -i "${NAT_BRIDGE}" -j ACCEPT 2>/dev/null \
-    || iptables -A FORWARD -i "${NAT_BRIDGE}" -j ACCEPT
-  iptables -C FORWARD -o "${NAT_BRIDGE}" -j ACCEPT 2>/dev/null \
-    || iptables -A FORWARD -o "${NAT_BRIDGE}" -j ACCEPT
+  setup_nat_bridge
 fi
 
 # --- sshd --------------------------------------------------------------------
@@ -177,6 +187,14 @@ fi
 log "Node ready (hostname=$(hostname))"
 trap 'log "Shutting down"; pkill libvirtd 2>/dev/null; pkill sshd 2>/dev/null; exit 0' SIGTERM SIGINT
 while true; do
+  # dbus: stale socket after daemon death breaks virsh/libvirt (IM probes)
+  if [ ! -S /var/run/dbus/system_bus_socket ] || ! pgrep -x dbus-daemon >/dev/null 2>&1; then
+    log "dbus died or stale socket, restarting"
+    rm -f /var/run/dbus/system_bus_socket /var/run/dbus/pid
+    mkdir -p /run/dbus /var/run/dbus
+    dbus-daemon --system --fork || true
+    sleep 1
+  fi
   if ! pgrep -x libvirtd >/dev/null 2>&1; then
     log "libvirtd died, restarting"
     libvirtd -d 2>/dev/null || /usr/sbin/libvirtd >/tmp/libvirtd.out 2>/tmp/libvirtd.err &
@@ -190,5 +208,7 @@ while true; do
     log "sshd died, restarting"
     /usr/sbin/sshd || true
   fi
+  # VNM can delete br0 on VM cleanup; keep NAT gateway alive for guests
+  setup_nat_bridge || true
   sleep 10
 done
